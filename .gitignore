@@ -1,0 +1,44 @@
+# Bağımlılıklar
+node_modules/
+.pnp
+.pnp.js
+
+# Derleme çıktıları
+dist/
+build/
+*.tsbuildinfo
+
+# Test çıktıları
+test-results/
+playwright-report/
+blob-report/
+coverage/
+.playwright/
+
+# Ortam
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Veritabanı volume'leri
+.data/
+
+# Editör ve işletim sistemi
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Loglar
+*.log
+npm-debug.log*

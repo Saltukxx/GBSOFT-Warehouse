@@ -1,0 +1,28 @@
+.time {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 1279px) {
+  .time {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.time__main {
+  min-width: 0;
+}
+
+.time__route {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 1fr);
+  gap: var(--space-4);
+}
+
+@media (max-width: 1279px) {
+  .time__route {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

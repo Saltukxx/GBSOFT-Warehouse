@@ -1,0 +1,59 @@
+.map {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-0);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.map__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line-subtle);
+  background: var(--surface-1);
+  flex: none;
+}
+
+.map__legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.map__ramp {
+  display: inline-flex;
+  border: 1px solid var(--line-subtle);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.map__ramp i {
+  display: block;
+  width: 18px;
+  height: 10px;
+}
+
+.map__zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.map__canvas {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 220px;
+  touch-action: none;
+  cursor: grab;
+  background: var(--surface-1);
+}
+
+.map__canvas:active {
+  cursor: grabbing;
+}

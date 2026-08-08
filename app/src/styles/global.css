@@ -1,0 +1,256 @@
+/* Global temel stiller + uygulama kabuğu */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: 1.45;
+  color: var(--ink-900);
+  background: var(--surface-1);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure {
+  margin: 0;
+}
+
+/* display:grid/flex tanımlı öğelerde de hidden çalışsın. */
+[hidden] {
+  display: none !important;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--blue-700);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: var(--blue-100);
+}
+
+/* ------------------------------------------------------------------ */
+/* Uygulama kabuğu                                                     */
+/* ------------------------------------------------------------------ */
+
+.shell {
+  display: grid;
+  grid-template-rows: var(--topbar-h) 1fr;
+  grid-template-columns: var(--nav-w) 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "nav main";
+  height: 100%;
+}
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: 0 var(--space-6);
+  background: var(--ink-950);
+  color: #ffffff;
+  border-bottom: 1px solid var(--ink-900);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.topbar__mark {
+  display: block;
+  flex: none;
+}
+
+.topbar__facts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: #c7d5df;
+}
+
+.topbar__fact strong {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar__demo-tag {
+  border: 1px solid #46617a;
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  color: #d7e3ea;
+  text-transform: uppercase;
+}
+
+.topbar__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-left: var(--space-5);
+  border-left: 1px solid #2a4459;
+}
+
+.topbar__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #2c4a61;
+  color: #ffffff;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+
+/* --- Sol navigasyon --- */
+
+.nav {
+  grid-area: nav;
+  background: var(--surface-0);
+  border-right: 1px solid var(--line-subtle);
+  overflow-y: auto;
+  padding: var(--space-4) 0 var(--space-8);
+}
+
+.nav__group {
+  margin-bottom: var(--space-5);
+}
+
+.nav__group-label {
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+
+.nav__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 6px var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ink-700);
+  border-left: 2px solid transparent;
+}
+
+.nav__link:hover {
+  background: var(--surface-1);
+  text-decoration: none;
+}
+
+.nav__link--active {
+  background: var(--surface-2);
+  border-left-color: var(--ink-950);
+  color: var(--ink-950);
+}
+
+.nav__link svg {
+  flex: none;
+  color: var(--ink-600);
+}
+
+.nav__link--active svg {
+  color: var(--ink-950);
+}
+
+.nav__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1279px) {
+  .nav__group-label {
+    display: none;
+  }
+  .nav__group {
+    border-bottom: 1px solid var(--line-subtle);
+    padding-bottom: var(--space-3);
+  }
+  .nav__label {
+    display: none;
+  }
+  .nav__link {
+    justify-content: center;
+    padding: 9px 0;
+  }
+}
+
+/* --- Ana alan --- */
+
+.main {
+  grid-area: main;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.page__body {
+  padding: var(--space-6);
+  flex: 1;
+  min-height: 0;
+}
+
+.page__body--flush {
+  padding: 0;
+  display: flex;
+  min-height: 0;
+}

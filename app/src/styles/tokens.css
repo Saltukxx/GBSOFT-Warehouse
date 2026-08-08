@@ -1,0 +1,93 @@
+/* GBSoft Warehouse Intelligence — tasarım tokenları
+   Şartname §4. Değerler değiştirilmemelidir; yeni token eklenebilir. */
+
+:root {
+  /* --- Tipografi --- */
+  --font-ui: "IBM Plex Sans", Arial, Helvetica, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --text-3xl: 34px;
+
+  /* --- Renk --- */
+  --ink-950: #0b1f33;
+  --ink-900: #132c43;
+  --ink-700: #365064;
+  --ink-600: #526879;
+  --ink-500: #708391;
+
+  --surface-0: #ffffff;
+  --surface-1: #f6f8fa;
+  --surface-2: #edf2f5;
+  --surface-3: #e2e9ed;
+
+  --line-subtle: #d5dfe5;
+  --line-strong: #aebec8;
+
+  --blue-700: #0b6e99;
+  --blue-600: #1684ad;
+  --teal-700: #0e817d;
+  --teal-600: #159993;
+  --green-700: #287b56;
+  --green-100: #e8f4ed;
+  --amber-700: #a76500;
+  --amber-100: #fff4dc;
+  --red-700: #aa3f3a;
+  --red-100: #fbeceb;
+  --purple-700: #66549c;
+
+  /* Anlamsal türevler */
+  --blue-100: #e4f0f6;
+  --teal-100: #e2f1f0;
+  --purple-100: #eeeaf6;
+  --purple-200: #dcd5ec;
+
+  /* --- Boşluk --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* --- Radius / gölge --- */
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --shadow-float: 0 10px 30px rgba(11, 31, 51, 0.12);
+
+  /* --- Kabuk ölçüleri --- */
+  --topbar-h: 56px;
+  --nav-w: 224px;
+  --nav-w-compact: 64px;
+  --rail-w: 380px;
+
+  /* --- Motion --- */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+}
+
+@media (max-width: 1279px) {
+  :root {
+    --nav-w: var(--nav-w-compact);
+    --rail-w: 340px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+}
