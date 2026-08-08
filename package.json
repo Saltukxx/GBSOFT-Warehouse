@@ -1,0 +1,29 @@
+{
+  "name": "gbsoft-warehouse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GBSoft Slotting & Picking Intelligence — WMS üstü karar ve kanıt katmanı",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @gbsoft/web",
+    "dev:api": "npm run dev --workspace @gbsoft/api",
+    "build": "npm run build --workspace @gbsoft/domain && npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace @gbsoft/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:psql": "docker compose exec db psql -U gbsoft -d gbsoft",
+    "db:migrate": "npm run db:migrate --workspace @gbsoft/api",
+    "db:seed": "npm run db:seed --workspace @gbsoft/api",
+    "db:reset": "npm run db:reset --workspace @gbsoft/api"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

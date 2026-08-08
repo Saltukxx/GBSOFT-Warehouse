@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "gbsoft-demo",
+      "name": "gbsoft-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "app", "run", "dev"],
+      "runtimeArgs": ["run", "dev", "--workspace", "@gbsoft/web"],
       "port": 5173
     }
   ]
