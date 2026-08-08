@@ -104,7 +104,9 @@ listeleri, ürünün gerçekte ne kadarının canlı olduğunu tek bakışta gö
 
 ## Belgeler
 
+- [docs/PLAN.md](docs/PLAN.md) — **ürünleştirme planı** (yaşayan belge: faz
+  durumu, mimari, veri modeli, sapmalar, açık kararlar)
 - `GBSoft_Warehouse_to_Truck_Optimization_Engine_Proje_Tasarimi.pdf` — ürün ve
   mimari tasarımı
 - `GBSoft_Picking_Time_Slot_Optimization_Demo_Spec.md` — demo şartnamesi
-- `apps/web/README.md` — arayüz ayrıntıları ve sunum akışı
+- [apps/web/README.md](apps/web/README.md) — arayüz ayrıntıları ve sunum akışı
