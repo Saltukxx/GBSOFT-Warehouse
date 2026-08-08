@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { CompletionPoint } from "../../data/fixtures/overview";
+import type { CompletionPoint } from "@gbsoft/seed";
 import { num } from "../../lib/format";
 
 /**

@@ -1,8 +1,8 @@
 import type { MoveTask } from "@gbsoft/domain";
 import type { ZoneId } from "@gbsoft/domain";
 import { parseZone } from "@gbsoft/domain";
-import { RECOMMENDATIONS } from "./slotPlan";
-import { getSku } from "./skus";
+import { RECOMMENDATIONS } from "./slotPlan.js";
+import { getSku } from "./skus.js";
 
 /**
  * Taşıma görevleri.

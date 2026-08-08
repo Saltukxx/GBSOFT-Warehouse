@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import type { IconName } from "../components/ui/Icon";
 import { Icon } from "../components/ui/Icon";
-import { CURRENT_USER, FACILITY } from "../data/fixtures/facility";
+import { CURRENT_USER, FACILITY } from "@gbsoft/seed";
 import { timeOnly } from "../lib/format";
 
 type NavItem = { to: string; label: string; icon: IconName; end?: boolean };

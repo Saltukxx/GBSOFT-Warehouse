@@ -1,0 +1,31 @@
+# Geliştirme altyapısı.
+#
+# Veritabanı ve solver konteynerde çalışır; API ve web host'ta npm ile
+# çalıştırılır (hızlı yeniden yükleme için). Host'ta psql kurulu olması
+# gerekmez: `npm run db:psql` konteyner içinden açar.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gbsoft-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gbsoft}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gbsoft_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-gbsoft}
+      # İmajda tr_TR yerelleştirmesi yok; sıralama uygulama katmanında
+      # localeCompare("tr") ile yapılır.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      TZ: Europe/Istanbul
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gbsoft} -d ${POSTGRES_DB:-gbsoft}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  db-data:

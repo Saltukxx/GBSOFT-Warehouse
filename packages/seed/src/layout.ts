@@ -1,6 +1,6 @@
-import type { AisleFaces, Location, ZoneId } from "@gbsoft/domain";
-import { formatLocationId } from "@gbsoft/domain";
-import { seededRange } from "../rng";
+import type { AisleFaces, FacilityLayout, FloorArea, Location, ZoneId } from "@gbsoft/domain";
+import { estimateLocationPickTimeSec, formatLocationId } from "@gbsoft/domain";
+import { seededRange } from "./rng.js";
 
 /**
  * Depo geometrisi.
@@ -98,16 +98,6 @@ const LOW_QUALITY_LOCATIONS = new Set([
   "B-09-04",
 ]);
 
-/**
- * Sabit süre bileşenleri (queue + search + reach/scan + handle).
- * Toplamları tesis P50'sindeki karşılıklarıyla aynıdır: 4,2 + 8,2 + 10,7 + 14,0.
- */
-const FIXED_TIME_SEC = 4.2 + 8.2 + 10.7 + 14.0;
-/** Tesis ortalamasında travel bileşeni (§7.3). */
-const MEAN_TRAVEL_SEC = 26.1;
-/** Altın bölge dışındaki gözlerde ek uzanma/merdiven süresi. */
-const NON_GOLDEN_PENALTY_SEC = 3.4;
-
 type Draft = Omit<Location, "pickTimeSec">;
 
 function buildLocations(): Location[] {
@@ -164,8 +154,10 @@ function buildLocations(): Location[] {
           equipment: level === 3 ? "forklift" : bay <= 2 ? "manual" : "cart",
           goldenZone,
           congestionScore,
-          locked: false,
           blocked: BLOCKED_LOCATIONS.has(id),
+          blockedReason: BLOCKED_LOCATIONS.has(id)
+            ? "Raf ayağı hasar kaydı açık"
+            : undefined,
           distanceToDockM,
           picksPerDay,
           replenishmentsPerDay,
@@ -175,24 +167,20 @@ function buildLocations(): Location[] {
     }
   }
 
-  // Travel bileşeni tesis ortalamasına göre normalize edilir; böylece
-  // lokasyon sürelerinin ortalaması Time Intelligence'taki P50 ile tutarlı olur.
-  const meanDistance =
+  // Süre tahmini @gbsoft/domain'deki tek modelden gelir; seed, API ve solver
+  // aynı formülü kullanır.
+  const meanDistanceToDockM =
     drafts.reduce((sum, d) => sum + d.distanceToDockM, 0) / drafts.length;
 
-  return drafts.map((draft) => {
-    const travelSec = MEAN_TRAVEL_SEC * (draft.distanceToDockM / meanDistance);
-    const congestionSec = travelSec * draft.congestionScore * 0.55;
-    const pickTimeSec =
-      Math.round(
-        (FIXED_TIME_SEC +
-          travelSec +
-          congestionSec +
-          (draft.goldenZone ? 0 : NON_GOLDEN_PENALTY_SEC)) *
-          10,
-      ) / 10;
-    return { ...draft, pickTimeSec };
-  });
+  return drafts.map((draft) => ({
+    ...draft,
+    pickTimeSec: estimateLocationPickTimeSec({
+      distanceToDockM: draft.distanceToDockM,
+      meanDistanceToDockM,
+      congestionScore: draft.congestionScore,
+      goldenZone: draft.goldenZone,
+    }),
+  }));
 }
 
 export const LOCATIONS: Location[] = buildLocations();
@@ -226,9 +214,80 @@ export const ZONE_LABELS: Record<ZoneId, string> = {
   D: "Zone D · Hacimli / düşük hız",
 };
 
-/** Dock, staging ve packing alanları — haritada bağlam verir. */
-export const FLOOR_AREAS = [
-  { id: "dock", label: "Dock 1-6", x: 40, y: 352, width: 260, height: 52 },
-  { id: "staging", label: "Staging", x: 320, y: 352, width: 300, height: 52 },
-  { id: "packing", label: "Packing", x: 640, y: 352, width: 312, height: 52 },
+/**
+ * Raf dışı alanlar. Cross-aisle de bir zemin alanıdır; harita bunları
+ * geometriden türetmek yerine dijital ikizden okur.
+ */
+export const FLOOR_AREAS: FloorArea[] = [
+  {
+    id: "cross-aisle-1",
+    label: "cross-aisle",
+    kind: "cross-aisle",
+    x: MAP.originX - 12,
+    y: CROSS_AISLE.y,
+    width: MAP.aislePitch * AISLE_COUNT,
+    height: CROSS_AISLE.height,
+  },
+  {
+    id: "dock",
+    label: "Dock 1-6",
+    kind: "dock",
+    x: 40,
+    y: 352,
+    width: 260,
+    height: 52,
+  },
+  {
+    id: "staging",
+    label: "Staging",
+    kind: "staging",
+    x: 320,
+    y: 352,
+    width: 300,
+    height: 52,
+  },
+  {
+    id: "packing",
+    label: "Packing",
+    kind: "packing",
+    x: 640,
+    y: 352,
+    width: 312,
+    height: 52,
+  },
 ];
+
+/** Dijital ikizin harita sözleşmesi — API ile aynı biçim. */
+export const FACILITY_LAYOUT: FacilityLayout = {
+  facilityCode: "MARMARA-DC-01",
+  facilityName: "Marmara Dağıtım Merkezi",
+  layoutVersion: 1,
+  viewBox: { width: MAP.width, height: MAP.height },
+  unitsPerMeter: MAP.unitsPerMeter,
+  dockAnchor: { x: MAP.dockX, y: MAP.dockY },
+  zones: (["A", "B", "C", "D"] as ZoneId[]).map((code) => ({
+    code,
+    name: ZONE_LABELS[code],
+  })),
+  aisles: AISLE_FACES.map((face) => ({
+    number: face.aisle,
+    x: MAP.originX + (face.aisle - 1) * MAP.aislePitch,
+    walkwayWidth: MAP.walkwayWidth,
+    congestionScore: AISLE_CONGESTION[face.aisle],
+    faces: [
+      {
+        side: "left" as const,
+        zone: face.left,
+        x: faceX(face.aisle, "left"),
+        width: MAP.rackWidth,
+      },
+      {
+        side: "right" as const,
+        zone: face.right,
+        x: faceX(face.aisle, "right"),
+        width: MAP.rackWidth,
+      },
+    ],
+  })),
+  floorAreas: FLOOR_AREAS,
+};

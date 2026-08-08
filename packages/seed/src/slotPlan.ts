@@ -4,10 +4,10 @@ import type {
   SlotPlan,
   SlotRecommendation,
 } from "@gbsoft/domain";
-import { FACILITY, VERSIONS } from "./facility";
-import { getLocation } from "./layout";
-import { EMPTY_PICK_LOCATIONS, SKUS, getSku } from "./skus";
-import { seededRange } from "../rng";
+import { FACILITY, VERSIONS } from "./facility.js";
+import { getLocation } from "./layout.js";
+import { EMPTY_PICK_LOCATIONS, SKUS, getSku } from "./skus.js";
+import { seededRange } from "./rng.js";
 
 /**
  * Slot planı SP-2026-081.

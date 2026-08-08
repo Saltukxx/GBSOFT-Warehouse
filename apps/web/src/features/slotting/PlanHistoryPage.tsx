@@ -1,8 +1,8 @@
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Note, Panel, StatusTag } from "../../components/ui/primitives";
 import { usePlanStore } from "../../app/planStore";
-import { PLAN_VERSIONS } from "../../data/fixtures/slotPlan";
-import { VERSIONS } from "../../data/fixtures/facility";
+import { PLAN_VERSIONS } from "@gbsoft/seed";
+import { VERSIONS } from "@gbsoft/seed";
 import { pct } from "../../lib/format";
 
 /**

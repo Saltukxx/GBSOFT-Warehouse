@@ -11,11 +11,11 @@ import { Drawer } from "../../components/ui/Overlay";
 import { DataTable } from "../../components/data-table/DataTable";
 import type { Column } from "../../components/data-table/DataTable";
 import { fetchDataQuality } from "../../data/api";
-import type { QualityIssue } from "../../data/fixtures/dataQuality";
+import type { QualityIssue } from "@gbsoft/seed";
 import {
   SOURCE_HEALTH,
   missingDimensionRows,
-} from "../../data/fixtures/dataQuality";
+} from "@gbsoft/seed";
 import { num, pctPlain } from "../../lib/format";
 import { useAsync } from "../../lib/useAsync";
 import "./dataquality.css";

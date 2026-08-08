@@ -11,8 +11,8 @@ import type { SlotPlan } from "@gbsoft/domain";
 import {
   DEMO_SLOT_PLAN,
   LOCKED_REOPTIMIZED_PLAN,
-} from "../data/fixtures/slotPlan";
-import { MOVE_TASKS, MOVE_TASKS_R1 } from "../data/fixtures/moveTasks";
+} from "@gbsoft/seed";
+import { MOVE_TASKS, MOVE_TASKS_R1 } from "@gbsoft/seed";
 
 /**
  * Plan UI state'i — kilitler, plan dışı bırakılan SKU'lar, yasaklı

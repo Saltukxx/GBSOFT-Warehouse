@@ -8,7 +8,7 @@ import type { Column } from "../../components/data-table/DataTable";
 import { usePlanStore } from "../../app/planStore";
 import type { MoveTask } from "@gbsoft/domain";
 import type { ZoneId } from "@gbsoft/domain";
-import { PACKAGE_LABELS, taskSkuName } from "../../data/fixtures/moveTasks";
+import { PACKAGE_LABELS, taskSkuName } from "@gbsoft/seed";
 import { publishMoveTasks } from "../../data/api";
 import { hours, num, pct } from "../../lib/format";
 import "./moveplan.css";

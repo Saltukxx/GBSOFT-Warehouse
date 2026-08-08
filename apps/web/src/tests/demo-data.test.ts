@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { FACILITY } from "../data/fixtures/facility";
-import { LOCATIONS } from "../data/fixtures/layout";
-import { SKUS } from "../data/fixtures/skus";
+import { FACILITY } from "@gbsoft/seed";
+import { LOCATIONS } from "@gbsoft/seed";
+import { SKUS } from "@gbsoft/seed";
 import {
   DEMO_SLOT_PLAN,
   LOCKED_REOPTIMIZED_PLAN,
   RECOMMENDATIONS,
-} from "../data/fixtures/slotPlan";
+} from "@gbsoft/seed";
 import {
   DROPPED_TASK_SEQS_R1,
   MOVE_TASKS,
   MOVE_TASKS_R1,
-} from "../data/fixtures/moveTasks";
-import { PLAN_BREAKDOWN } from "../data/fixtures/pickingTime";
+} from "@gbsoft/seed";
+import { PLAN_BREAKDOWN } from "@gbsoft/seed";
 
 /**
  * Demo verisi tutarlılık testleri (§22.3, §23).

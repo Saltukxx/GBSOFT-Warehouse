@@ -1,0 +1,843 @@
+// GBSoft Slotting & Picking Intelligence — kanonik veri modeli.
+//
+// İlkeler:
+//  1. Her tablo tenantId taşır. Kurulum tek kiracı olsa da çok kiracılıya
+//     geçiş migration gerektirmez (RLS Faz 6'da eklenir).
+//  2. Kaynak sistem kimliği asla üzerine yazılmaz: code/sourceSystem/sourceId
+//     ayrı alanlardır (PDF §5, §17).
+//  3. eventTime ile ingestTime ayrıdır; geç gelen olay doğru operasyon
+//     zamanına yazılır, model tahmin anındaki snapshot korunur.
+//  4. Plan yayınlandıktan sonra değişiklik yeni sürüm üretir; lineage
+//     değişmez biçimde saklanır.
+//
+// Not: raf ayak izleri dikdörtgen olduğu için x/y/width/height yeterlidir ve
+// PostGIS'e bugün ihtiyaç yoktur. Düzensiz raf geometrisi veya mekânsal
+// çakışma doğrulaması gerektiğinde postgis eklentisi ayrı bir migration ile
+// eklenir; rota/mesafe hesabı zaten mekânsal değil graf problemidir.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Kiracı, kimlik ve denetim
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now())
+
+  facilities Facility[]
+  users      User[]
+}
+
+enum UserRole {
+  COO
+  WAREHOUSE_MANAGER
+  PLANNER
+  TEAM_LEAD
+  OPERATOR
+  DATA_ENGINEER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  email     String
+  fullName  String
+  role      UserRole
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+/// Plan yayını, kural değişikliği ve rollback için değiştirilemez kayıt.
+model AuditLog {
+  id            String   @id @default(cuid())
+  tenantId      String
+  actorUserId   String?
+  action        String
+  entityType    String
+  entityId      String
+  correlationId String?
+  before        Json?
+  after         Json?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Mekân: tesis, dijital ikiz sürümü ve lokasyonlar
+// ---------------------------------------------------------------------------
+
+model Facility {
+  id        String   @id @default(cuid())
+  tenantId  String
+  /// İnsan tarafından kullanılan kod: MARMARA-DC-01
+  code      String
+  name      String
+  city      String
+  timezone  String   @default("Europe/Istanbul")
+  createdAt DateTime @default(now())
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  layoutVersions LayoutVersion[]
+  skus           Sku[]
+  waves          Wave[]
+  slotPlans      SlotPlan[]
+  events         Event[]
+  qualityIssues  DataQualityIssue[]
+  pickTimeModels PickTimeModel[]
+  importBatches  ImportBatch[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+/// Dijital ikiz sürümü. Fiziksel düzen değişince yeni sürüm açılır; planlar
+/// hangi sürümde üretildiklerini saklar.
+model LayoutVersion {
+  id            String   @id @default(cuid())
+  tenantId      String
+  facilityId    String
+  version       Int
+  /// Harita çizim alanı (SVG kullanıcı birimi).
+  viewBoxWidth  Float
+  viewBoxHeight Float
+  /// SVG kullanıcı birimi / metre.
+  unitsPerMeter Float
+  /// Mesafe ölçümünün başladığı dock referans noktası.
+  dockAnchorX   Float
+  dockAnchorY   Float
+  isActive      Boolean  @default(false)
+  note          String?
+  createdAt     DateTime @default(now())
+
+  facility   Facility    @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  zones      Zone[]
+  aisles     Aisle[]
+  rackFaces  RackFace[]
+  locations  Location[]
+  floorAreas FloorArea[]
+  slotPlans  SlotPlan[]
+
+  @@unique([tenantId, facilityId, version])
+  @@index([tenantId, facilityId])
+}
+
+model Zone {
+  id              String  @id @default(cuid())
+  tenantId        String
+  layoutVersionId String
+  /// A | B | C | D
+  code            String
+  name            String
+  description     String?
+
+  layoutVersion LayoutVersion @relation(fields: [layoutVersionId], references: [id], onDelete: Cascade)
+  rackFaces     RackFace[]
+  locations     Location[]
+
+  @@unique([tenantId, layoutVersionId, code])
+  @@index([tenantId, layoutVersionId])
+}
+
+model Aisle {
+  id              String @id @default(cuid())
+  tenantId        String
+  layoutVersionId String
+  number          Int
+  /// Koridorun sol raf yüzünün x konumu.
+  x               Float
+  /// Yürüme koridorunun genişliği.
+  walkwayWidth    Float
+  /// 0-1 arası koridor yoğunluk skoru (geçmiş olaylardan öğrenilir).
+  congestionScore Float  @default(0)
+
+  layoutVersion LayoutVersion @relation(fields: [layoutVersionId], references: [id], onDelete: Cascade)
+  rackFaces     RackFace[]
+  locations     Location[]
+
+  @@unique([tenantId, layoutVersionId, number])
+  @@index([tenantId, layoutVersionId])
+}
+
+enum RackSide {
+  LEFT
+  RIGHT
+}
+
+/// Bir koridorun tek raf yüzü. İki yüz farklı zonlara ait olabilir.
+model RackFace {
+  id              String   @id @default(cuid())
+  tenantId        String
+  layoutVersionId String
+  aisleId         String
+  zoneId          String
+  side            RackSide
+  x               Float
+  width           Float
+
+  layoutVersion LayoutVersion @relation(fields: [layoutVersionId], references: [id], onDelete: Cascade)
+  aisle         Aisle         @relation(fields: [aisleId], references: [id], onDelete: Cascade)
+  zone          Zone          @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  locations     Location[]
+
+  @@unique([tenantId, aisleId, side])
+  @@index([tenantId, layoutVersionId])
+}
+
+enum EquipmentClass {
+  MANUAL
+  CART
+  FORKLIFT
+}
+
+model Location {
+  id              String @id @default(cuid())
+  tenantId        String
+  layoutVersionId String
+  zoneId          String
+  aisleId         String
+  rackFaceId      String
+  /// İnsan tarafından kullanılan kod: A-03-02 (zon-koridor-göz)
+  code            String
+  /// Koridor boyunca göz sırası; 1 dock'a en yakın.
+  bay             Int
+  /// Raf yüksekliği kademesi; 2 bel hizası (altın bölge).
+  level           Int
+
+  // Ayak izi — dikdörtgen. Düzensiz geometri gerekirse PostGIS'e taşınır.
+  x      Float
+  y      Float
+  width  Float
+  height Float
+
+  // Fiziksel kapasite — hard constraint kaynağı.
+  maxWeightKg  Float
+  maxVolumeM3  Float
+  equipment    EquipmentClass
+  goldenZone   Boolean        @default(false)
+
+  /// Graf üzerinden dock'a yürüme mesafesi (m). Faz 2'de graph'tan üretilir.
+  distanceToDockM Float
+  congestionScore Float   @default(0)
+  blocked         Boolean @default(false)
+  blockedReason   String?
+
+  /// Kapasite verisi doğrulanmadıysa 1'in altındadır.
+  dataQuality Float @default(1)
+
+  layoutVersion    LayoutVersion       @relation(fields: [layoutVersionId], references: [id], onDelete: Cascade)
+  zone             Zone                @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  aisle            Aisle               @relation(fields: [aisleId], references: [id], onDelete: Cascade)
+  rackFace         RackFace            @relation(fields: [rackFaceId], references: [id], onDelete: Cascade)
+  placements       SkuPlacement[]
+  recommendationsFrom SlotRecommendation[] @relation("SourceLocation")
+  recommendationsTo   SlotRecommendation[] @relation("TargetLocation")
+  alternatives     SlotAlternative[]
+  planLocks        PlanLock[]
+
+  @@unique([tenantId, layoutVersionId, code])
+  @@index([tenantId, layoutVersionId])
+  @@index([tenantId, zoneId])
+}
+
+/// Dock, staging, packing gibi raf dışı alanlar — harita bağlamı.
+model FloorArea {
+  id              String @id @default(cuid())
+  tenantId        String
+  layoutVersionId String
+  code            String
+  label           String
+  kind            String
+  x               Float
+  y               Float
+  width           Float
+  height          Float
+
+  layoutVersion LayoutVersion @relation(fields: [layoutVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, layoutVersionId, code])
+  @@index([tenantId, layoutVersionId])
+}
+
+// ---------------------------------------------------------------------------
+// Ürün
+// ---------------------------------------------------------------------------
+
+enum VelocityClass {
+  A
+  B
+  C
+}
+
+enum HandlingClass {
+  STANDARD
+  FRAGILE
+  HEAVY
+}
+
+model Sku {
+  id         String        @id @default(cuid())
+  tenantId   String
+  facilityId String
+  /// İnsan tarafından kullanılan kod: SKU-184
+  code       String
+  name       String
+  category   String
+  handling   HandlingClass @default(STANDARD)
+
+  /// Kaynak sistem kimliği — asla üzerine yazılmaz.
+  sourceSystem String?
+  sourceId     String?
+  gtin         String?
+
+  facility        Facility            @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  dimension       SkuDimension?
+  velocity        VelocitySnapshot[]
+  placements      SkuPlacement[]
+  affinitiesFrom  SkuAffinity[]       @relation("AffinitySource")
+  affinitiesTo    SkuAffinity[]       @relation("AffinityTarget")
+  recommendations SlotRecommendation[]
+  moveTasks       MoveTask[]
+  planLocks       PlanLock[]
+  planExclusions  PlanExclusion[]
+
+  @@unique([tenantId, facilityId, code])
+  @@index([tenantId, facilityId])
+}
+
+/// Ölçü verisi ayrı tutulur: kaynağı, ölçüm zamanı ve toleransı kayıtlıdır.
+/// Eksikse slot planı bu SKU'yu kapsam dışında bırakır ve write-back bloklanır.
+model SkuDimension {
+  id         String   @id @default(cuid())
+  tenantId   String
+  skuId      String   @unique
+  widthCm    Float?
+  depthCm    Float?
+  heightCm   Float?
+  weightKg   Float?
+  /// manual | wms | dimensioner | import
+  source     String
+  measuredAt DateTime?
+  toleranceP Float    @default(0.05)
+
+  sku Sku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model SkuAffinity {
+  id           String @id @default(cuid())
+  tenantId     String
+  skuId        String
+  relatedSkuId String
+  /// Aynı siparişte birlikte toplanma oranı.
+  coPickRate   Float
+
+  sku     Sku @relation("AffinitySource", fields: [skuId], references: [id], onDelete: Cascade)
+  related Sku @relation("AffinityTarget", fields: [relatedSkuId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, skuId, relatedSkuId])
+  @@index([tenantId, skuId])
+}
+
+/// Belirli bir pencerede ölçülen hız. Plan hangi snapshot ile üretildiyse onu
+/// referans alır; sonradan gelen veri geçmiş planı değiştirmez.
+model VelocitySnapshot {
+  id                    String        @id @default(cuid())
+  tenantId              String
+  skuId                 String
+  windowStart           DateTime
+  windowEnd             DateTime
+  velocityClass         VelocityClass
+  picksPerDay           Float
+  unitsPerPick          Float
+  replenishmentsPerDay  Float
+
+  sku Sku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, skuId, windowStart, windowEnd])
+  @@index([tenantId, skuId])
+}
+
+/// SKU'nun pick gözündeki yerleşimi. Geçerlilik aralığı taşır; taşıma
+/// uygulandığında yeni satır açılır, geçmiş silinmez.
+model SkuPlacement {
+  id            String    @id @default(cuid())
+  tenantId      String
+  skuId         String
+  locationId    String
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  /// Bu yerleşimi üreten plan (varsa).
+  sourcePlanId  String?
+
+  sku      Sku      @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, skuId, effectiveTo])
+  @@index([tenantId, locationId, effectiveTo])
+}
+
+// ---------------------------------------------------------------------------
+// Talep ve execution
+// ---------------------------------------------------------------------------
+
+model Wave {
+  id           String    @id @default(cuid())
+  tenantId     String
+  facilityId   String
+  code         String
+  plannedStart DateTime
+  slaCutoff    DateTime
+  status       String
+  orderLines   Int       @default(0)
+
+  facility  Facility   @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  pickTasks PickTask[]
+
+  @@unique([tenantId, facilityId, code])
+  @@index([tenantId, facilityId])
+}
+
+model PickTask {
+  id         String    @id @default(cuid())
+  tenantId   String
+  waveId     String
+  /// Kaynak WMS görev kimliği.
+  sourceId   String?
+  skuCode    String
+  locationCode String
+  quantity   Int
+  startedAt  DateTime?
+  completedAt DateTime?
+  /// Ölçülen süre; süre modelinin etiket kaynağı.
+  durationSec Float?
+  operatorRef String?
+  exceptionCode String?
+
+  wave Wave @relation(fields: [waveId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, waveId])
+  @@index([tenantId, completedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Olay omurgası (PDF §17 zarfı)
+// ---------------------------------------------------------------------------
+
+model Event {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  facilityId           String
+  eventType            String
+  source               String
+  sourceId             String?
+  entityType           String
+  entityId             String
+  /// Olayın sahada gerçekleştiği an.
+  eventTime            DateTime
+  /// Olayın sisteme ulaştığı an. eventTime ile karıştırılmaz.
+  ingestTime           DateTime @default(now())
+  locationCode         String?
+  actor                String?
+  sensor               String?
+  payloadSchemaVersion String
+  payload              Json
+  confidence           Float?
+  evidenceUri          String?
+  correlationId        String?
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  /// Aynı kaynak olayının iki kez işlenmesini engeller.
+  @@unique([tenantId, source, sourceId, eventType])
+  @@index([tenantId, facilityId, eventTime])
+  @@index([tenantId, entityType, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Süre modeli
+// ---------------------------------------------------------------------------
+
+/// Picking süresi tahmin modelinin sürümü ve parametreleri.
+/// Yeterli olay verisi gelmeden calibrated=false kalır ve arayüz bunu söyler.
+model PickTimeModel {
+  id             String   @id @default(cuid())
+  tenantId       String
+  facilityId     String
+  version        String
+  /// nominalSpeedMps, searchBaseSec, reachScanBaseSec, handleBaseSec,
+  /// congestionFactor, exceptionProbability, p90Multiplier ...
+  parameters     Json
+  calibrated     Boolean  @default(false)
+  trainedFrom    DateTime?
+  trainedTo      DateTime?
+  sampleSize     Int      @default(0)
+  p90CoveragePct Float?
+  isActive       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, facilityId, version])
+  @@index([tenantId, facilityId])
+}
+
+// ---------------------------------------------------------------------------
+// Optimizasyon: profil, çalıştırma, plan
+// ---------------------------------------------------------------------------
+
+/// Amaç ağırlıkları müşteri profili olarak versiyonlanır; her müşteri için
+/// algoritma fork'u yapılmaz (PDF §7, §14).
+model ObjectiveProfile {
+  id                  String  @id @default(cuid())
+  tenantId            String
+  key                 String
+  label               String
+  description         String
+  pickingTimeWeight   Float
+  replenishmentWeight Float
+  congestionWeight    Float
+  moveCostWeight      Float
+  defaultMoveBudget   Int
+  isSystem            Boolean @default(true)
+
+  slotPlans SlotPlan[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  FEASIBLE
+  INFEASIBLE
+  FAILED
+  TIMEOUT
+}
+
+/// Her solver çağrısının değişmez kaydı: girdi snapshot'ı, kısıtlar, sürüm,
+/// seed ve sonuç kalitesi. Tekrar üretilebilirlik buna dayanır.
+model OptimizationRun {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  facilityId         String
+  basePlanId         String?
+  status             RunStatus @default(QUEUED)
+  solverVersion      String
+  modelVersion       String
+  objectiveProfileKey String
+  /// Ağırlıklar, move budget, minimum net fayda, freeze zone.
+  parameters         Json
+  /// Kilitli atamalar, plan dışı SKU'lar, yasaklı lokasyonlar.
+  constraints        Json
+  seed               Int
+  timeLimitMs        Int
+  snapshotAt         DateTime
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  solveDurationMs    Int?
+  objectiveValue     Float?
+  /// Solver zaman sınırına takıldıysa OPTIMAL iddia edilmez; gap raporlanır.
+  gapPct             Float?
+  hardViolations     Int       @default(0)
+  infeasibilityReasons Json?
+  relaxationOptions  Json?
+  errorMessage       String?
+  createdAt          DateTime  @default(now())
+  createdByUserId    String?
+
+  resultPlan SlotPlan?
+
+  @@index([tenantId, facilityId, createdAt])
+}
+
+enum PlanState {
+  DRAFT
+  READY
+  PARTIALLY_PUBLISHED
+  PUBLISHED
+  SUPERSEDED
+  ROLLED_BACK
+}
+
+model SlotPlan {
+  id              String    @id @default(cuid())
+  tenantId        String
+  facilityId      String
+  layoutVersionId String
+  /// İnsan tarafından kullanılan kod: SP-2026-081
+  code            String
+  /// Bu planın türetildiği plan.
+  basePlanId      String?
+  runId           String?   @unique
+  objectiveProfileId String
+  state           PlanState @default(DRAFT)
+
+  /// Planın üretildiği veri snapshot'ı.
+  snapshotAt   DateTime
+  solverVersion String
+  modelVersion  String
+
+  // Özet KPI'lar — tahmindir, ölçülmüş kazanç değildir.
+  netOperationDeltaPct  Float
+  pickingTimeDeltaPct   Float
+  walkingDeltaPct       Float
+  replenishmentDeltaPct Float
+  moveTaskCount         Int
+  moveHours             Float
+  affectedSkuCount      Int
+  hardViolationCount    Int
+
+  createdAt       DateTime @default(now())
+  createdByUserId String?
+  createdByLabel  String
+  publishedAt     DateTime?
+
+  facility         Facility            @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  layoutVersion    LayoutVersion       @relation(fields: [layoutVersionId], references: [id])
+  objectiveProfile ObjectiveProfile    @relation(fields: [objectiveProfileId], references: [id])
+  run              OptimizationRun?    @relation(fields: [runId], references: [id])
+  recommendations  SlotRecommendation[]
+  moveTasks        MoveTask[]
+  locks            PlanLock[]
+  exclusions       PlanExclusion[]
+
+  @@unique([tenantId, facilityId, code])
+  @@index([tenantId, facilityId, createdAt])
+}
+
+enum RecommendationStatus {
+  RECOMMENDED
+  ALTERNATIVE
+  EXCLUDED
+  LOCKED
+}
+
+model SlotRecommendation {
+  id       String @id @default(cuid())
+  tenantId String
+  planId   String
+  skuId    String
+  sourceLocationId String
+  targetLocationId String
+
+  expectedSecondsPerLineDelta Float
+  p90SecondsPerLineDelta      Float
+  replenishmentDeltaPerDay    Float
+  moveHours                   Float
+
+  /// Operatöre gösterilen gerekçeler ve trade-off'lar — sıralı metin listesi.
+  reasons   String[]
+  tradeoffs String[]
+
+  hardConstraintsPassed Boolean              @default(true)
+  status                RecommendationStatus @default(RECOMMENDED)
+  /// Veri tamlığı ve model kalibrasyonundan türetilen güven.
+  confidencePct         Float
+
+  plan           SlotPlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sku            Sku               @relation(fields: [skuId], references: [id])
+  sourceLocation Location          @relation("SourceLocation", fields: [sourceLocationId], references: [id])
+  targetLocation Location          @relation("TargetLocation", fields: [targetLocationId], references: [id])
+  alternatives   SlotAlternative[]
+
+  @@unique([tenantId, planId, skuId])
+  @@index([tenantId, planId])
+}
+
+model SlotAlternative {
+  id                       String  @id @default(cuid())
+  tenantId                 String
+  recommendationId         String
+  locationId               String
+  rank                     Int
+  netSecondsDelta          Float
+  pickingQuality           String
+  replenishmentDeltaPerDay Float
+  congestionLevel          String
+  /// onerilen | alternatif | uygun degil
+  status                   String
+  blockedReason            String?
+
+  recommendation SlotRecommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  location       Location           @relation(fields: [locationId], references: [id])
+
+  @@unique([tenantId, recommendationId, locationId])
+  @@index([tenantId, recommendationId])
+}
+
+enum MoveTaskKind {
+  VACATE
+  MOVE
+  VERIFY
+  OPEN
+}
+
+enum MoveTaskStatus {
+  READY
+  WAITING
+  BLOCKED
+  PUBLISHED
+  APPLIED
+  CANCELLED
+}
+
+model MoveTask {
+  id       String @id @default(cuid())
+  tenantId String
+  planId   String
+  /// Plan içindeki sıra numarası.
+  seq      Int
+  code     String
+
+  kind             MoveTaskKind
+  label            String
+  skuId            String?
+  sourceLocationCode String?
+  targetLocationCode String?
+  zoneCode         String
+  loadLabel        String
+  loadHours        Float
+  /// Bölünemez uygulama paketi — kısmi onay paket bütünlüğünü korur.
+  packageKey       String
+  packageLabel     String
+  expectedBenefitPct Float
+  status           MoveTaskStatus @default(WAITING)
+  publishedAt      DateTime?
+  /// WMS'e yazarken tekrar göndermeyi engeller.
+  idempotencyKey   String?
+
+  plan         SlotPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sku          Sku?            @relation(fields: [skuId], references: [id])
+  dependencies MoveDependency[] @relation("DependentTask")
+  dependents   MoveDependency[] @relation("PrerequisiteTask")
+
+  @@unique([tenantId, planId, seq])
+  @@index([tenantId, planId])
+  @@index([tenantId, planId, zoneCode])
+}
+
+model MoveDependency {
+  id             String @id @default(cuid())
+  tenantId       String
+  taskId         String
+  prerequisiteId String
+  /// Bağımlılığın nedeni: göz boşaltma, koridor penceresi, stok doğrulama.
+  reason         String
+
+  task         MoveTask @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  prerequisite MoveTask @relation("PrerequisiteTask", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, taskId, prerequisiteId])
+  @@index([tenantId, taskId])
+}
+
+/// Kullanıcının sabitlediği atama — bir sonraki çalıştırmaya hard constraint
+/// olarak gider.
+model PlanLock {
+  id         String   @id @default(cuid())
+  tenantId   String
+  planId     String
+  skuId      String
+  locationId String
+  createdAt  DateTime @default(now())
+  createdByUserId String?
+
+  plan     SlotPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sku      Sku      @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, planId, skuId])
+  @@index([tenantId, planId])
+}
+
+/// Plan dışında bırakılan SKU.
+model PlanExclusion {
+  id        String   @id @default(cuid())
+  tenantId  String
+  planId    String
+  skuId     String
+  reason    String?
+  createdAt DateTime @default(now())
+  createdByUserId String?
+
+  plan SlotPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sku  Sku      @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, planId, skuId])
+  @@index([tenantId, planId])
+}
+
+// ---------------------------------------------------------------------------
+// Veri kalitesi ve içe aktarma
+// ---------------------------------------------------------------------------
+
+enum IssuePriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model DataQualityIssue {
+  id           String        @id @default(cuid())
+  tenantId     String
+  facilityId   String
+  code         String
+  priority     IssuePriority
+  problem      String
+  detail       String
+  impact       String
+  suggestedAction String
+  owner        String
+  /// Etkilenen kayıt kimlikleri (SKU kodu, cihaz, olay).
+  affectedIds  String[]
+  affectedLabel String
+  /// true ise plan yayınını bloklar.
+  blocksPublish Boolean      @default(false)
+  resolvedAt   DateTime?
+  detectedAt   DateTime      @default(now())
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, facilityId, code])
+  @@index([tenantId, facilityId, resolvedAt])
+}
+
+/// Dosya içe aktarma partisi. Hatalı satır sessizce atılmaz; rapor saklanır.
+model ImportBatch {
+  id           String   @id @default(cuid())
+  tenantId     String
+  facilityId   String
+  kind         String
+  fileName     String
+  rowsTotal    Int      @default(0)
+  rowsAccepted Int      @default(0)
+  rowsRejected Int      @default(0)
+  /// Satır bazlı doğrulama raporu.
+  report       Json?
+  createdAt    DateTime @default(now())
+  createdByUserId String?
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, facilityId, createdAt])
+}

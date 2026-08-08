@@ -23,8 +23,9 @@ export type Location = {
   goldenZone: boolean;
   /** 0-1 arası koridor yoğunluk skoru. */
   congestionScore: number;
-  locked: boolean;
+  /** Fiziksel olarak picking'e kapalı (bakım, hasar). Plan kilidi değildir. */
   blocked: boolean;
+  blockedReason?: string;
   /** Dock'a graf üzerinden yürüme mesafesi (m). */
   distanceToDockM: number;
   /** Katman verileri — heatmap için. */
@@ -69,6 +70,77 @@ export type Facility = {
 
 /** Koridorun iki raf yüzü vardır; her yüz bir zona aittir. */
 export type AisleFaces = { aisle: number; left: ZoneId; right: ZoneId };
+
+/* ------------------------------------------------------------------ */
+/* Dijital ikiz — harita geometrisi                                     */
+/* ------------------------------------------------------------------ */
+
+export type RackSide = "left" | "right";
+
+export type RackFaceGeometry = {
+  side: RackSide;
+  zone: ZoneId;
+  x: number;
+  width: number;
+};
+
+export type AisleGeometry = {
+  number: number;
+  x: number;
+  walkwayWidth: number;
+  /** 0-1 arası koridor yoğunluk skoru. */
+  congestionScore: number;
+  faces: RackFaceGeometry[];
+};
+
+/** Raf dışı alanlar: dock, staging, packing ve cross-aisle şeritleri. */
+export type FloorAreaKind =
+  | "dock"
+  | "staging"
+  | "packing"
+  | "cross-aisle"
+  | "other";
+
+export type FloorArea = {
+  id: string;
+  label: string;
+  kind: FloorAreaKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type ZoneSummary = {
+  code: ZoneId;
+  name: string;
+  description?: string;
+};
+
+/**
+ * Haritanın çizilmesi için gereken her şey. Arayüz artık geometriyi sabit
+ * ızgaradan türetmez; dijital ikiz sürümünden okur.
+ */
+export type FacilityLayout = {
+  facilityCode: string;
+  facilityName: string;
+  layoutVersion: number;
+  viewBox: { width: number; height: number };
+  /** SVG kullanıcı birimi / metre. */
+  unitsPerMeter: number;
+  /** Mesafe ölçümünün başladığı dock referans noktası. */
+  dockAnchor: { x: number; y: number };
+  zones: ZoneSummary[];
+  aisles: AisleGeometry[];
+  floorAreas: FloorArea[];
+};
+
+/** Layout ucunun tam yanıtı. */
+export type FacilityLayoutResponse = {
+  facility: Facility;
+  layout: FacilityLayout;
+  locations: Location[];
+};
 
 export function formatLocationId(zone: ZoneId, aisle: number, bay: number) {
   return `${zone}-${String(aisle).padStart(2, "0")}-${String(bay).padStart(

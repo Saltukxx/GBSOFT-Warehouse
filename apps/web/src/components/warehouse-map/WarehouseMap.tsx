@@ -1,13 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { Location, ZoneId } from "@gbsoft/domain";
-import {
-  AISLE_FACES,
-  CROSS_AISLE,
-  FLOOR_AREAS,
-  MAP,
-} from "../../data/fixtures/layout";
-import type { LayerId } from "./layers";
-import { LAYER_BY_ID, contrastInk, rampColor } from "./layers";
+import type { FacilityLayout, Location, ZoneId } from "@gbsoft/domain";
+import type { LayerDef, LayerId } from "./layers";
+import { contrastInk, rampColor } from "./layers";
 import { Icon } from "../ui/Icon";
 
 /**
@@ -24,6 +18,10 @@ export type MoveArrow = {
 };
 
 type Props = {
+  /** Dijital ikizin harita sözleşmesi; geometri buradan gelir. */
+  layout: FacilityLayout;
+  /** Katman tanımları yüklenen lokasyon kümesinden üretilir. */
+  layers: LayerDef[];
   locations: Location[];
   layer: LayerId;
   /** Görünüm modu; "diff" yalnız plana giren gözleri vurgular. */
@@ -47,6 +45,8 @@ const MIN_SCALE = 0.6;
 const MAX_SCALE = 3;
 
 export function WarehouseMap({
+  layout: facilityLayout,
+  layers,
   locations,
   layer,
   viewMode,
@@ -68,7 +68,14 @@ export function WarehouseMap({
   );
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const layerDef = LAYER_BY_ID.get(layer)!;
+  const layerDef = layers.find((l) => l.id === layer) ?? layers[0];
+  const { viewBox: canvas, dockAnchor } = facilityLayout;
+  const crossAisles = facilityLayout.floorAreas.filter(
+    (area) => area.kind === "cross-aisle",
+  );
+  const otherAreas = facilityLayout.floorAreas.filter(
+    (area) => area.kind !== "cross-aisle",
+  );
   const locationById = useMemo(
     () => new Map(locations.map((l) => [l.id, l])),
     [locations],
@@ -129,7 +136,7 @@ export function WarehouseMap({
     if (!drag) return;
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const unitPerPx = MAP.width / rect.width;
+    const unitPerPx = canvas.width / rect.width;
     setView((v) => ({
       ...v,
       x: drag.vx + ((event.clientX - drag.x) * unitPerPx) / v.scale,
@@ -190,8 +197,8 @@ export function WarehouseMap({
     }
   }
 
-  const viewBox = `${-view.x} ${-view.y} ${MAP.width / view.scale} ${
-    MAP.height / view.scale
+  const viewBox = `${-view.x} ${-view.y} ${canvas.width / view.scale} ${
+    canvas.height / view.scale
   }`;
 
   return (
@@ -303,39 +310,48 @@ export function WarehouseMap({
         <rect
           x={0}
           y={0}
-          width={MAP.width}
-          height={MAP.height}
+          width={canvas.width}
+          height={canvas.height}
           fill="var(--surface-1)"
         />
 
-        {/* Cross-aisle */}
-        <rect
-          x={MAP.originX - 12}
-          y={CROSS_AISLE.y}
-          width={MAP.aislePitch * 12}
-          height={CROSS_AISLE.height}
-          fill="var(--surface-2)"
-        />
-        <text
-          x={MAP.originX - 6}
-          y={CROSS_AISLE.y + CROSS_AISLE.height / 2 + 3}
-          fontSize="8"
-          fill="var(--ink-500)"
-        >
-          cross-aisle
-        </text>
+        {/* Cross-aisle şeritleri */}
+        {crossAisles.map((area) => (
+          <g key={area.id}>
+            <rect
+              x={area.x}
+              y={area.y}
+              width={area.width}
+              height={area.height}
+              fill="var(--surface-2)"
+            />
+            <text
+              x={area.x + 6}
+              y={area.y + area.height / 2 + 3}
+              fontSize="8"
+              fill="var(--ink-500)"
+            >
+              {area.label}
+            </text>
+          </g>
+        ))}
 
         {/* Koridor başlıkları ve vurgular */}
-        {AISLE_FACES.map((face) => {
-          const x = MAP.originX + (face.aisle - 1) * MAP.aislePitch;
-          const highlighted = highlightAisles.includes(face.aisle);
+        {facilityLayout.aisles.map((aisle) => {
+          const x = aisle.x;
+          const span =
+            aisle.faces.reduce(
+              (max, face) => Math.max(max, face.x + face.width),
+              x,
+            ) - x;
+          const highlighted = highlightAisles.includes(aisle.number);
           return (
-            <g key={face.aisle}>
+            <g key={aisle.number}>
               {highlighted ? (
                 <rect
                   x={x - 3}
                   y={34}
-                  width={MAP.aislePitch - 4}
+                  width={span + 6}
                   height={300}
                   fill="var(--red-100)"
                   stroke="var(--red-700)"
@@ -344,7 +360,7 @@ export function WarehouseMap({
                 />
               ) : null}
               <text
-                x={x + MAP.aislePitch / 2 - 4}
+                x={x + span / 2}
                 y={28}
                 textAnchor="middle"
                 fontSize="10"
@@ -352,7 +368,7 @@ export function WarehouseMap({
                 fill={highlighted ? "var(--red-700)" : "var(--ink-600)"}
                 fontWeight={highlighted ? 600 : 400}
               >
-                {String(face.aisle).padStart(2, "0")}
+                {String(aisle.number).padStart(2, "0")}
               </text>
             </g>
           );
@@ -503,7 +519,7 @@ export function WarehouseMap({
         })}
 
         {/* Dock / staging / packing */}
-        {FLOOR_AREAS.map((area) => (
+        {otherAreas.map((area) => (
           <g key={area.id}>
             <rect
               x={area.x}
@@ -513,7 +529,7 @@ export function WarehouseMap({
               fill="var(--surface-2)"
               stroke="var(--line-strong)"
               strokeWidth={0.8}
-              strokeDasharray={area.id === "dock" ? undefined : "5 4"}
+              strokeDasharray={area.kind === "dock" ? undefined : "5 4"}
             />
             <text
               x={area.x + 8}
@@ -530,17 +546,17 @@ export function WarehouseMap({
         {/* Ana giriş/çıkış yönü */}
         <g>
           <path
-            d={`M${MAP.dockX - 40} ${MAP.dockY + 52} L${MAP.dockX - 40} ${
-              MAP.dockY + 68
-            } L${MAP.dockX + 40} ${MAP.dockY + 68}`}
+            d={`M${dockAnchor.x - 40} ${dockAnchor.y + 52} L${
+              dockAnchor.x - 40
+            } ${dockAnchor.y + 68} L${dockAnchor.x + 40} ${dockAnchor.y + 68}`}
             fill="none"
             stroke="var(--ink-500)"
             strokeWidth={1.2}
             markerEnd="url(#move-arrow)"
           />
           <text
-            x={MAP.dockX + 50}
-            y={MAP.dockY + 72}
+            x={dockAnchor.x + 50}
+            y={dockAnchor.y + 72}
             fontSize="9"
             fill="var(--ink-600)"
           >

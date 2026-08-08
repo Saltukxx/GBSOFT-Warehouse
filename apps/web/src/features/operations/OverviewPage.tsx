@@ -12,13 +12,13 @@ import { Icon } from "../../components/ui/Icon";
 import { Drawer } from "../../components/ui/Overlay";
 import { CompletionChart } from "../../components/charts/CompletionChart";
 import { fetchOverview } from "../../data/api";
-import type { ExceptionItem } from "../../data/fixtures/overview";
+import type { ExceptionItem } from "@gbsoft/seed";
 import {
   NOW_HOUR,
   SLA_CUTOFF_HOUR,
   SLA_TARGET_LINES,
-} from "../../data/fixtures/overview";
-import { FACILITY } from "../../data/fixtures/facility";
+} from "@gbsoft/seed";
+import { FACILITY } from "@gbsoft/seed";
 import { num, pct, pctPlain, sec } from "../../lib/format";
 import { useAsync } from "../../lib/useAsync";
 import "./overview.css";

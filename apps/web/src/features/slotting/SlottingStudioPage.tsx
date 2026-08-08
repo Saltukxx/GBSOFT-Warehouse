@@ -8,21 +8,21 @@ import {
   StatusTag,
 } from "../../components/ui/primitives";
 import { Icon } from "../../components/ui/Icon";
-import { WarehouseMap } from "../../components/warehouse-map/WarehouseMap";
+import { MapSurface } from "../../components/warehouse-map/MapSurface";
 import type { MoveArrow } from "../../components/warehouse-map/WarehouseMap";
-import { LAYERS } from "../../components/warehouse-map/layers";
 import type { LayerId } from "../../components/warehouse-map/layers";
 import { OptimizerModal } from "./OptimizerModal";
 import { usePlanStore } from "../../app/planStore";
 import type { ZoneId } from "@gbsoft/domain";
 import { parseZone } from "@gbsoft/domain";
-import { LOCATIONS, getLocation } from "../../data/fixtures/layout";
-import { SKU_BY_LOCATION, getSku } from "../../data/fixtures/skus";
+import { useLayout } from "../../data/useLayout";
+// SKU master'ı henüz golden dataset'ten okunur (Faz 1'de canlıya bağlanacak).
+import { SKU_BY_LOCATION, getSku } from "@gbsoft/seed";
 import {
   RECOMMENDATIONS,
   RECOMMENDATION_BY_LOCATION,
   RECOMMENDATION_BY_SKU,
-} from "../../data/fixtures/slotPlan";
+} from "@gbsoft/seed";
 import { hours, num, pct, pctPlain, secPlain, signed } from "../../lib/format";
 import "./slotting.css";
 
@@ -31,6 +31,8 @@ type ViewMode = "current" | "proposed" | "diff";
 export function SlottingStudioPage() {
   const store = usePlanStore();
   const { plan } = store;
+  const twin = useLayout();
+  const { getLocation } = twin;
 
   const [viewMode, setViewMode] = useState<ViewMode>("proposed");
   const [layer, setLayer] = useState<LayerId>("pickTime");
@@ -163,7 +165,7 @@ export function SlottingStudioPage() {
             value={layer}
             onChange={(e) => setLayer(e.target.value as LayerId)}
           >
-            {LAYERS.map((l) => (
+            {twin.layers.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.label}
               </option>
@@ -202,8 +204,8 @@ export function SlottingStudioPage() {
 
       <div className="page__body--flush studio">
         <div className="studio__main">
-          <WarehouseMap
-            locations={LOCATIONS}
+          <MapSurface
+            twin={twin}
             layer={viewMode === "diff" ? "planChange" : layer}
             viewMode={viewMode}
             zoneFilter={zoneFilter}

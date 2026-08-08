@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "npm run dev --workspace @gbsoft/web",
     "dev:api": "npm run dev --workspace @gbsoft/api",
-    "build": "npm run build --workspace @gbsoft/domain && npm run build --workspaces --if-present",
+    "build": "npm run build --workspace @gbsoft/domain && npm run build --workspace @gbsoft/seed && npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace @gbsoft/web",

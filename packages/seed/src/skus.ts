@@ -1,6 +1,6 @@
 import type { SKU, VelocityClass } from "@gbsoft/domain";
-import { LOCATIONS } from "./layout";
-import { makeRng, seededRange, seededShuffle } from "../rng";
+import { LOCATIONS } from "./layout.js";
+import { makeRng, seededRange, seededShuffle } from "./rng.js";
 
 /**
  * 184 SKU. 96'sı aktif pick lokasyonuna yerleşiktir; kalanı rezerv/bulk

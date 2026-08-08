@@ -3,18 +3,18 @@ import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Note, Panel, Skeleton } from "../../components/ui/primitives";
 import { TimeDecompositionBar } from "../../components/charts/TimeDecompositionBar";
-import { WarehouseMap } from "../../components/warehouse-map/WarehouseMap";
+import { MapSurface } from "../../components/warehouse-map/MapSurface";
 import { DataTable } from "../../components/data-table/DataTable";
 import type { Column } from "../../components/data-table/DataTable";
 import type { ComponentKey } from "@gbsoft/domain";
 import { PICK_TIME_COMPONENTS } from "@gbsoft/domain";
 import { fetchPickingTime } from "../../data/api";
-import { LOCATIONS } from "../../data/fixtures/layout";
+import { useLayout } from "../../data/useLayout";
 import {
   CONGESTED_AISLES,
   TRAVEL_ROUTE_SEGMENTS,
-} from "../../data/fixtures/pickingTime";
-import type { VarianceRow } from "../../data/fixtures/pickingTime";
+} from "@gbsoft/seed";
+import type { VarianceRow } from "@gbsoft/seed";
 import { num, pctPlain, sec, secPlain } from "../../lib/format";
 import { useAsync } from "../../lib/useAsync";
 import "./time.css";
@@ -33,6 +33,7 @@ export function TimeIntelligencePage() {
   const [zone, setZone] = useState(ZONE_OPTIONS[0]);
 
   const state = useAsync((signal) => fetchPickingTime(signal), []);
+  const twin = useLayout();
 
   const selectedMeta = useMemo(
     () => PICK_TIME_COMPONENTS.find((c) => c.key === selected) ?? null,
@@ -221,8 +222,8 @@ export function TimeIntelligencePage() {
             >
               <div className="time__route">
                 <div>
-                  <WarehouseMap
-                    locations={LOCATIONS}
+                  <MapSurface
+                    twin={twin}
                     layer="congestion"
                     viewMode="current"
                     zoneFilter="all"

@@ -85,6 +85,80 @@ export const COMPONENT_FIELD: Record<ComponentKey, keyof PickTimeBreakdown> = {
   exception: "exceptionSec",
 };
 
+/* ------------------------------------------------------------------ */
+/* Lokasyon bazlı süre tahmini                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Süre modelinin parametreleri. Tesis bazlı, versiyonlu ve API'den okunur;
+ * koda gömülmez.
+ */
+export type PickTimeModelParameters = {
+  /** Yürüme dışındaki sabit bileşenler. */
+  queueSec: number;
+  searchSec: number;
+  reachScanSec: number;
+  handleSec: number;
+  /** Tesis ortalamasındaki travel bileşeni; mesafe buna göre normalize edilir. */
+  meanTravelSec: number;
+  /** Congestion skorunun travel süresine katsayısı. */
+  congestionFactor: number;
+  /** Altın bölge dışındaki gözlerde ek uzanma/merdiven süresi. */
+  nonGoldenPenaltySec: number;
+  /** P90 = P50 × multiplier + offset. */
+  p90Multiplier: number;
+  p90OffsetSec: number;
+};
+
+/**
+ * Kalibre edilmemiş başlangıç parametreleri.
+ *
+ * Sabit bileşenlerin toplamı ve ortalama travel değeri tesis P50'siyle
+ * tutarlıdır. Gerçek olay verisi geldiğinde bu değerler quantile regression
+ * ile değiştirilir; o ana kadar model `calibrated: false` raporlanır.
+ */
+export const DEFAULT_PICK_TIME_PARAMETERS: PickTimeModelParameters = {
+  queueSec: 4.2,
+  searchSec: 8.2,
+  reachScanSec: 10.7,
+  handleSec: 14.0,
+  meanTravelSec: 26.1,
+  congestionFactor: 0.55,
+  nonGoldenPenaltySec: 3.4,
+  p90Multiplier: 1.28,
+  p90OffsetSec: 2.8,
+};
+
+/**
+ * Tek bir gözden toplama süresi (sn/line).
+ *
+ * Travel bileşeni tesis ortalamasına göre normalize edilir; böylece lokasyon
+ * sürelerinin ortalaması tesis P50'si ile örtüşür ve ısı haritası ile süre
+ * analizi aynı modeli anlatır.
+ */
+export function estimateLocationPickTimeSec(input: {
+  distanceToDockM: number;
+  meanDistanceToDockM: number;
+  congestionScore: number;
+  goldenZone: boolean;
+  parameters?: PickTimeModelParameters;
+}): number {
+  const p = input.parameters ?? DEFAULT_PICK_TIME_PARAMETERS;
+  const ratio =
+    input.meanDistanceToDockM > 0
+      ? input.distanceToDockM / input.meanDistanceToDockM
+      : 1;
+
+  const travelSec = p.meanTravelSec * ratio;
+  const congestionSec = travelSec * input.congestionScore * p.congestionFactor;
+  const fixedSec = p.queueSec + p.searchSec + p.reachScanSec + p.handleSec;
+  const ergonomicsSec = input.goldenZone ? 0 : p.nonGoldenPenaltySec;
+
+  return (
+    Math.round((fixedSec + travelSec + congestionSec + ergonomicsSec) * 10) / 10
+  );
+}
+
 /**
  * Picking süresi tahmini (§14.1). Demo deterministiktir; gerçek WMS verisi
  * bağlandığında kalibre edilir.

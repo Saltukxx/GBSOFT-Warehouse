@@ -1,4 +1,4 @@
-import { MISSING_DIMENSION_SKUS, getSku } from "./skus";
+import { MISSING_DIMENSION_SKUS, getSku } from "./skus.js";
 
 /** Veri kalitesi ekranı (§10). Coverage bar + problem listesi; donut yok. */
 

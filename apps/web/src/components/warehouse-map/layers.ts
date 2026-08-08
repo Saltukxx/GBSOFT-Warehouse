@@ -1,13 +1,11 @@
 import type { Location } from "@gbsoft/domain";
-import { LOCATION_STATS } from "../../data/fixtures/layout";
 
-/** Isı haritası katmanları (§8.3). Rainbow palet kullanılmaz. */
-
-const fmt = (value: number, decimals = 0) =>
-  new Intl.NumberFormat("tr-TR", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
+/**
+ * Isı haritası katmanları (§8.3). Rainbow palet kullanılmaz.
+ *
+ * Skalalar sabit eşiklerden değil, yüklenen lokasyon kümesinden hesaplanır;
+ * böylece farklı tesislerde de doğru okunur.
+ */
 
 export type LayerId =
   | "pickTime"
@@ -31,76 +29,107 @@ export type LayerDef = {
   legendHigh: string;
 };
 
-export const LAYERS: LayerDef[] = [
+const fmt = (value: number, decimals = 0) =>
+  new Intl.NumberFormat("tr-TR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value);
+
+type LayerSpec = {
+  id: LayerId;
+  label: string;
+  unit: string;
+  value: (loc: Location) => number;
+  ramp: [string, string];
+  decimals: number;
+  lowLabel?: (min: number) => string;
+  highLabel?: (max: number) => string;
+};
+
+const SPECS: LayerSpec[] = [
   {
     id: "pickTime",
     label: "Picking time",
     unit: "sn",
     value: (l) => l.pickTimeSec,
-    min: LOCATION_STATS.pickTime.min,
-    max: LOCATION_STATS.pickTime.max,
     ramp: ["#eef3f6", "#0b6e99"],
-    legendLow: `${fmt(LOCATION_STATS.pickTime.min)} sn`,
-    legendHigh: `${fmt(LOCATION_STATS.pickTime.max)} sn`,
+    decimals: 0,
+    lowLabel: (min) => `${fmt(min)} sn`,
+    highLabel: (max) => `${fmt(max)} sn`,
   },
   {
     id: "velocity",
     label: "Velocity",
     unit: "pick/gün",
     value: (l) => l.picksPerDay,
-    min: LOCATION_STATS.picks.min,
-    max: LOCATION_STATS.picks.max,
     ramp: ["#eef3f6", "#132c43"],
-    legendLow: `${fmt(LOCATION_STATS.picks.min)}`,
-    legendHigh: `${fmt(LOCATION_STATS.picks.max)} pick/gün`,
+    decimals: 0,
+    highLabel: (max) => `${fmt(max)} pick/gün`,
   },
   {
     id: "congestion",
     label: "Congestion",
     unit: "skor",
     value: (l) => l.congestionScore,
-    min: LOCATION_STATS.congestion.min,
-    max: LOCATION_STATS.congestion.max,
     ramp: ["#fbeceb", "#aa3f3a"],
-    legendLow: fmt(LOCATION_STATS.congestion.min, 2),
-    legendHigh: fmt(LOCATION_STATS.congestion.max, 2),
+    decimals: 2,
   },
   {
     id: "replenishment",
     label: "Replenishment",
     unit: "/gün",
     value: (l) => l.replenishmentsPerDay,
-    min: LOCATION_STATS.replenishment.min,
-    max: LOCATION_STATS.replenishment.max,
     ramp: ["#fff4dc", "#a76500"],
-    legendLow: fmt(LOCATION_STATS.replenishment.min, 1),
-    legendHigh: `${fmt(LOCATION_STATS.replenishment.max, 1)}/gün`,
+    decimals: 1,
+    highLabel: (max) => `${fmt(max, 1)}/gün`,
   },
   {
     id: "dataQuality",
     label: "Veri kalitesi",
     unit: "",
     value: (l) => 1 - l.dataQuality,
-    min: 0,
-    max: 1,
     ramp: ["#eef3f6", "#66549c"],
-    legendLow: "tam",
-    legendHigh: "eksik",
-  },
-  {
-    id: "planChange",
-    label: "Plan değişikliği",
-    unit: "",
-    value: () => 0,
-    min: 0,
-    max: 1,
-    ramp: ["#f6f8fa", "#f6f8fa"],
-    legendLow: "değişmiyor",
-    legendHigh: "kaynak / hedef",
+    decimals: 2,
+    lowLabel: () => "tam",
+    highLabel: () => "eksik",
   },
 ];
 
-export const LAYER_BY_ID = new Map(LAYERS.map((l) => [l.id, l]));
+const PLAN_CHANGE_LAYER: LayerDef = {
+  id: "planChange",
+  label: "Plan değişikliği",
+  unit: "",
+  value: () => 0,
+  min: 0,
+  max: 1,
+  ramp: ["#f6f8fa", "#f6f8fa"],
+  legendLow: "değişmiyor",
+  legendHigh: "kaynak / hedef",
+};
+
+/** Yüklenen lokasyonlardan katman tanımlarını üretir. */
+export function buildLayers(locations: readonly Location[]): LayerDef[] {
+  const layers = SPECS.map((spec) => {
+    const values = locations.map(spec.value);
+    // Boş kümede skala 0-1'e düşer; harita yine çizilir.
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 1;
+    return {
+      id: spec.id,
+      label: spec.label,
+      unit: spec.unit,
+      value: spec.value,
+      min,
+      // Bütün değerler eşitse rampanın çökmesini engelle.
+      max: max > min ? max : min + 1,
+      ramp: spec.ramp,
+      legendLow: spec.lowLabel?.(min) ?? fmt(min, spec.decimals),
+      legendHigh: spec.highLabel?.(max) ?? fmt(max, spec.decimals),
+    } satisfies LayerDef;
+  });
+
+  return [...layers, PLAN_CHANGE_LAYER];
+}
 
 function hexToRgb(hex: string): [number, number, number] {
   const v = hex.replace("#", "");
