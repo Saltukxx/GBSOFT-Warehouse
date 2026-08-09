@@ -7,6 +7,8 @@ import type {
   ImportTemplate,
   MoveTask,
   PickingTimeResponse,
+  RoutePlan,
+  Scene3DResponse,
   SlotPlan,
 } from "@gbsoft/domain";
 import type {
@@ -15,6 +17,9 @@ import type {
 } from "@gbsoft/domain";
 import {
   DEFAULT_PICK_TIME_PARAMETERS,
+  buildScene3D,
+  buildTwinGraph,
+  shortestPathNodes,
   IMPORT_KINDS,
   IMPORT_TEMPLATES,
   templateToCsvRows,
@@ -128,6 +133,101 @@ export async function fetchLayout(
 ): Promise<FacilityLayoutResponse> {
   return delay(
     { facility: FACILITY, layout: FACILITY_LAYOUT, locations: LOCATIONS },
+    LATENCY.layout,
+    signal,
+  );
+}
+
+/**
+ * GET /api/facilities/:id/scene-3d
+ *
+ * Demo modu 3B sahneyi de gerçek dönüşümle üretir: aynı `buildScene3D`
+ * sunucuda da çalışır. Demo ile ürün farklı bir sahne gösteremez.
+ */
+export async function fetchScene3D(
+  signal?: AbortSignal,
+): Promise<Scene3DResponse> {
+  return delay(
+    {
+      facility: { id: FACILITY.id, name: FACILITY.name, city: FACILITY.city },
+      scene: buildScene3D({ layout: FACILITY_LAYOUT, locations: LOCATIONS }),
+    },
+    LATENCY.layout,
+    signal,
+  );
+}
+
+/**
+ * GET /api/facilities/:id/routes
+ *
+ * Demo modunda graf tarayıcıda kurulur ve aynı `shortestPathNodes` ile
+ * çözülür. Sunucudaki rota ile demo rotası aynı algoritmadan çıkar.
+ */
+export async function fetchRoute(
+  stops: string[],
+  signal?: AbortSignal,
+): Promise<RoutePlan> {
+  const graph = buildTwinGraph({
+    unitsPerMeter: FACILITY_LAYOUT.unitsPerMeter,
+    dockAnchor: FACILITY_LAYOUT.dockAnchor,
+    aisles: FACILITY_LAYOUT.aisles,
+    floorAreas: FACILITY_LAYOUT.floorAreas,
+    locations: LOCATIONS,
+  });
+
+  const toM = (units: number) =>
+    Math.round((units / FACILITY_LAYOUT.unitsPerMeter) * 1_000) / 1_000;
+  const nodeFor = (stop: string) =>
+    stop === "DOCK"
+      ? graph.dockNodeCode
+      : (graph.nodes.find((node) => node.locationCode === stop)?.code ?? null);
+
+  const legs: RoutePlan["legs"] = [];
+  const unreachable: RoutePlan["unreachable"] = [];
+
+  for (let index = 1; index < stops.length; index += 1) {
+    const fromCode = stops[index - 1];
+    const toCode = stops[index];
+    if (fromCode === toCode) continue;
+
+    const from = nodeFor(fromCode);
+    const to = nodeFor(toCode);
+    const path = from && to ? shortestPathNodes(graph, from, to) : null;
+    if (!path) {
+      unreachable.push({
+        fromCode,
+        toCode,
+        reason: "Grafta yürünebilir yol yok.",
+      });
+      continue;
+    }
+
+    const points = path.map((node) => ({ x: toM(node.x), y: 0, z: toM(node.y) }));
+    let distanceM = 0;
+    for (let step = 1; step < points.length; step += 1) {
+      distanceM += Math.hypot(
+        points[step].x - points[step - 1].x,
+        points[step].z - points[step - 1].z,
+      );
+    }
+    legs.push({
+      fromCode,
+      toCode,
+      distanceM: Math.round(distanceM * 1_000) / 1_000,
+      points,
+    });
+  }
+
+  return delay(
+    {
+      facilityCode: FACILITY.id,
+      layoutVersion: FACILITY_LAYOUT.layoutVersion,
+      units: "m" as const,
+      unreachable,
+      legs,
+      totalDistanceM:
+        Math.round(legs.reduce((sum, leg) => sum + leg.distanceM, 0) * 1_000) / 1_000,
+    },
     LATENCY.layout,
     signal,
   );

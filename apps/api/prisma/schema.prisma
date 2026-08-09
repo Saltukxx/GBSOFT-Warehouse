@@ -123,6 +123,9 @@ model LayoutVersion {
   /// Mesafe ölçümünün başladığı dock referans noktası.
   dockAnchorX   Float
   dockAnchorY   Float
+  /// Bina net yüksekliği (m). Faz 6 — ölçülmemişse 3B sahne raf tepesinden
+  /// türetir ve bunu `geometrySource: derived` olarak bildirir.
+  clearHeightM  Float?
   isActive      Boolean  @default(false)
   note          String?
   createdAt     DateTime @default(now())
@@ -244,6 +247,17 @@ model Location {
   /// Kapasite verisi doğrulanmadıysa 1'in altındadır.
   dataQuality Float @default(1)
 
+  // --- 3B geometri (Faz 6) --------------------------------------------------
+  // Ayak izi 2B'den gelir; düşey eksen buradadır. Üçü de opsiyoneldir: yeni bir
+  // tesiste ölçülmüş kot yoktur ve uydurulmuş bir kotu ölçülmüş gibi
+  // göstermeyiz. Boşken sahne varsayılan raf profilinden türetir.
+  /// Kademe tabanının zeminden yüksekliği (m).
+  levelElevationM   Float?
+  /// Kademe net açıklığı (m).
+  levelClearHeightM Float?
+  /// Göz derinliği (m). Boşsa ayak izi genişliğinden alınır.
+  depthM            Float?
+
   layoutVersion       LayoutVersion        @relation(fields: [layoutVersionId], references: [id], onDelete: Cascade)
   zone                Zone                 @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   aisle               Aisle                @relation(fields: [aisleId], references: [id], onDelete: Cascade)
@@ -321,6 +335,10 @@ model FloorArea {
   y               Float
   width           Float
   height          Float
+  /// Alanın 3B yüksekliği (m). Boşsa türünden türetilir (Faz 6).
+  heightM         Float?
+  /// Ekipman bu alandan geçebilir mi? Boşsa türünden türetilir (Faz 6).
+  traversable     Boolean?
 
   layoutVersion LayoutVersion @relation(fields: [layoutVersionId], references: [id], onDelete: Cascade)
 

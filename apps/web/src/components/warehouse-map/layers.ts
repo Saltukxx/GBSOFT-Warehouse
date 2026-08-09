@@ -5,7 +5,20 @@ import type { Location } from "@gbsoft/domain";
  *
  * Skalalar sabit eşiklerden değil, yüklenen lokasyon kümesinden hesaplanır;
  * böylece farklı tesislerde de doğru okunur.
+ *
+ * Katman tanımı `Location`'a değil, ısı alanlarını taşıyan **herhangi bir**
+ * kayda bağlıdır: 2B harita ve 3B sahne aynı skalayı paylaşır. Ayrı iki
+ * skala olsaydı aynı göz iki ekranda farklı renkte görünebilirdi.
  */
+
+export type LayerSource = Pick<
+  Location,
+  | "pickTimeSec"
+  | "picksPerDay"
+  | "congestionScore"
+  | "replenishmentsPerDay"
+  | "dataQuality"
+>;
 
 export type LayerId =
   | "pickTime"
@@ -20,7 +33,7 @@ export type LayerDef = {
   label: string;
   unit: string;
   /** Değeri okur; planChange katmanı ayrı ele alınır. */
-  value: (loc: Location) => number;
+  value: (loc: LayerSource) => number;
   min: number;
   max: number;
   /** Tek hue rampası: açık → koyu. */
@@ -39,7 +52,7 @@ type LayerSpec = {
   id: LayerId;
   label: string;
   unit: string;
-  value: (loc: Location) => number;
+  value: (loc: LayerSource) => number;
   ramp: [string, string];
   decimals: number;
   lowLabel?: (min: number) => string;
@@ -108,7 +121,7 @@ const PLAN_CHANGE_LAYER: LayerDef = {
 };
 
 /** Yüklenen lokasyonlardan katman tanımlarını üretir. */
-export function buildLayers(locations: readonly Location[]): LayerDef[] {
+export function buildLayers(locations: readonly LayerSource[]): LayerDef[] {
   const layers = SPECS.map((spec) => {
     const values = locations.map(spec.value);
     // Boş kümede skala 0-1'e düşer; harita yine çizilir.

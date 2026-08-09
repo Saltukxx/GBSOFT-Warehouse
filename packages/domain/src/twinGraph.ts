@@ -275,6 +275,70 @@ export function shortestPathDistances(
   return distances;
 }
 
+/**
+ * İki düğüm arasındaki en kısa yolun düğüm dizisi.
+ *
+ * `shortestPathDistances` yalnız uzunluğu verir; 3B replay rotanın *nereden*
+ * geçtiğini de bilmek zorundadır. Aynı Dijkstra'yı öncül kaydıyla yürütür,
+ * böylece mesafe ile çizilen rota ayrışamaz.
+ *
+ * Hedefe ulaşılamıyorsa `null` döner — uydurma bir doğru parçası çizmek,
+ * rafın içinden geçen bir rotayı gerçekmiş gibi göstermek olurdu.
+ */
+export function shortestPathNodes(
+  graph: TwinGraph,
+  sourceCode: string,
+  targetCode: string,
+): TwinGraphNode[] | null {
+  const links = adjacency(graph);
+  if (!links.has(sourceCode) || !links.has(targetCode)) return null;
+  if (sourceCode === targetCode) {
+    const node = graph.nodes.find((item) => item.code === sourceCode);
+    return node ? [node] : null;
+  }
+
+  const distances = new Map<string, number>([[sourceCode, 0]]);
+  const previous = new Map<string, string>();
+  const visited = new Set<string>();
+
+  while (visited.size < graph.nodes.length) {
+    let current: string | undefined;
+    let currentDistance = Number.POSITIVE_INFINITY;
+    for (const [code, value] of distances) {
+      if (!visited.has(code) && value < currentDistance) {
+        current = code;
+        currentDistance = value;
+      }
+    }
+    if (!current) break;
+    if (current === targetCode) break;
+    visited.add(current);
+
+    for (const link of links.get(current) ?? []) {
+      const candidate = currentDistance + link.distanceM;
+      if (candidate < (distances.get(link.code) ?? Number.POSITIVE_INFINITY)) {
+        distances.set(link.code, candidate);
+        previous.set(link.code, current);
+      }
+    }
+  }
+
+  if (!distances.has(targetCode)) return null;
+
+  const nodeByCode = new Map(graph.nodes.map((node) => [node.code, node]));
+  const path: TwinGraphNode[] = [];
+  let cursor: string | undefined = targetCode;
+  while (cursor) {
+    const node = nodeByCode.get(cursor);
+    if (!node) return null;
+    path.unshift(node);
+    if (cursor === sourceCode) break;
+    cursor = previous.get(cursor);
+  }
+
+  return path[0]?.code === sourceCode ? path : null;
+}
+
 export function graphCoverage(graph: TwinGraph): GraphCoverage {
   const locationNodes = graph.nodes.filter((node) => node.kind === "location");
   const reachable = shortestPathDistances(graph, graph.dockNodeCode);

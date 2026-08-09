@@ -8,6 +8,8 @@ import type {
   PickTimeCalibrationResult,
   PickTimeModelSnapshot,
   PickingTimeResponse,
+  RoutePlan,
+  Scene3DResponse,
   CreateOptimizationRunResponse,
   OptimizationRunResponse,
   ReoptimizeRequest,
@@ -73,6 +75,22 @@ export async function fetchLayout(
   signal?: AbortSignal,
 ): Promise<FacilityLayoutResponse> {
   return request(`/api/facilities/${FACILITY_CODE}/layout`, { signal });
+}
+
+/* GET /api/facilities/:code/scene-3d */
+export async function fetchScene3D(
+  signal?: AbortSignal,
+): Promise<Scene3DResponse> {
+  return request(`/api/facilities/${FACILITY_CODE}/scene-3d`, { signal });
+}
+
+/* GET /api/facilities/:code/routes */
+export async function fetchRoute(
+  stops: string[],
+  signal?: AbortSignal,
+): Promise<RoutePlan> {
+  const query = new URLSearchParams({ stops: stops.join(",") });
+  return request(`/api/facilities/${FACILITY_CODE}/routes?${query}`, { signal });
 }
 
 /* GET /api/facilities/:code/picking-time */

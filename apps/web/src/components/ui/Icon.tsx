@@ -33,10 +33,12 @@ export type IconName =
   | "fit"
   | "external"
   | "upload"
-  | "download";
+  | "download"
+  | "cube";
 
 const PATHS: Record<IconName, string> = {
   overview: "M3 3h7v7H3zM14 3h7v4h-7zM14 10h7v11h-7zM3 13h7v8H3z",
+  cube: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9",
   picking: "M4 7h16M4 12h10M4 17h13M18 12l3 3-3 3",
   exception: "M12 4l8 15H4zM12 10v4M12 17h.01",
   slotting: "M3 4h18v6H3zM3 14h8v6H3zM14 14h7v6h-7z",

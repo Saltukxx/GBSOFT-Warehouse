@@ -8,6 +8,7 @@ import { MovePlanPage } from "../features/move-plan/MovePlanPage";
 import { DataQualityPage } from "../features/data-quality/DataQualityPage";
 import { ImportsPage } from "../features/imports/ImportsPage";
 import { LayoutEditorPage } from "../features/layout-editor/LayoutEditorPage";
+import { Twin3DPage } from "../features/twin-3d/Twin3DPage";
 import { PlaceholderPage } from "../features/placeholder/PlaceholderPage";
 
 export const router = createBrowserRouter([
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
           />
         ),
       },
+      { path: "twin/3d", element: <Twin3DPage /> },
       { path: "optimization/slotting", element: <SlottingStudioPage /> },
       {
         path: "optimization/slotting/:planId",

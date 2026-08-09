@@ -21,6 +21,8 @@ export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "1";
 /** Canlı API'ye bağlanmış uçlar. */
 export const LIVE_ENDPOINTS = [
   "layout",
+  "scene-3d",
+  "routes",
   "imports",
   "data-quality",
   "picking-time",
@@ -40,6 +42,8 @@ export const FIXTURE_ENDPOINTS = [
 ] as const;
 
 export const fetchLayout = DEMO_MODE ? demo.fetchLayout : http.fetchLayout;
+export const fetchScene3D = DEMO_MODE ? demo.fetchScene3D : http.fetchScene3D;
+export const fetchRoute = DEMO_MODE ? demo.fetchRoute : http.fetchRoute;
 
 // Veri girişi. Demo modunda doğrulama tarayıcıda gerçekten çalışır — aynı
 // @gbsoft/domain motoru — ama yazma yapılmaz ve arayüz bunu söyler.

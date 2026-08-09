@@ -216,12 +216,18 @@ const LAYOUT_TEMPLATE: ImportTemplate = {
     col("blocked", "boolean", false, "Fiziksel olarak picking'e kapalı mı?", "hayır"),
     col("blockedReason", "string", false, "blocked=evet ise zorunlu.", ""),
     col("dataQuality", "number", false, "Kapasite verisi doğrulanmadıysa 1'in altında.", "1", { min: 0, max: 1 }),
+    // --- 3B geometri (Faz 6) — hepsi opsiyonel ---------------------------
+    // Boş bırakılırsa 3B sahne varsayılan raf profilinden türetir ve sonucu
+    // "türetilmiş" diye bildirir. Ölçülmemiş kotu ölçülmüş göstermeyiz.
+    col("levelElevationM", "number", false, "Kademe tabanının zeminden yüksekliği (m). Boşsa türetilir.", "0,85", { min: 0 }),
+    col("levelClearHeightM", "number", false, "Kademe net açıklığı (m). Boşsa türetilir.", "0,85", { min: 0 }),
+    col("depthM", "number", false, "Göz derinliği (m). Boşsa ayak izi genişliğinden alınır.", "1,2", { min: 0 }),
   ],
   sampleRows: [
     // Göz 1 dock'a en yakındır ve haritanın altında durur; y yukarı doğru azalır.
-    ["A", "Hızlı hareket", "3", "192", "20", "0,86", "left", "192", "28", "A-03-01", "1", "2", "192", "270", "28", "62", "420", "1,8", "manual", "evet", "28,4", "0,86", "hayır", "", "1"],
-    ["A", "Hızlı hareket", "3", "192", "20", "0,86", "left", "192", "28", "A-03-02", "2", "2", "192", "202", "28", "62", "420", "1,8", "manual", "evet", "34,5", "0,86", "hayır", "", "1"],
-    ["B", "Orta hareket", "3", "192", "20", "0,86", "right", "240", "28", "B-03-01", "1", "2", "240", "270", "28", "62", "380", "1,6", "cart", "hayır", "31,2", "0,72", "hayır", "", "1"],
+    ["A", "Hızlı hareket", "3", "192", "20", "0,86", "left", "192", "28", "A-03-01", "1", "2", "192", "270", "28", "62", "420", "1,8", "manual", "evet", "28,4", "0,86", "hayır", "", "1", "0,85", "0,85", "1,2"],
+    ["A", "Hızlı hareket", "3", "192", "20", "0,86", "left", "192", "28", "A-03-02", "2", "2", "192", "202", "28", "62", "420", "1,8", "manual", "evet", "34,5", "0,86", "hayır", "", "1", "0,85", "0,85", "1,2"],
+    ["B", "Orta hareket", "3", "192", "20", "0,86", "right", "240", "28", "B-03-01", "1", "2", "240", "270", "28", "62", "380", "1,6", "cart", "hayır", "31,2", "0,72", "hayır", "", "1", "", "", ""],
   ],
 };
 
@@ -245,10 +251,12 @@ const FLOOR_AREA_TEMPLATE: ImportTemplate = {
     col("y", "number", true, "Üst kenar.", "360"),
     col("width", "number", true, "Genişlik.", "60", { min: 0 }),
     col("height", "number", true, "Yükseklik.", "40", { min: 0 }),
+    col("heightM", "number", false, "Alanın 3B yüksekliği (m). Boşsa türünden türetilir.", "0,9", { min: 0 }),
+    col("traversable", "boolean", false, "Ekipman buradan geçebilir mi? Boşsa türünden türetilir.", "evet"),
   ],
   sampleRows: [
-    ["DOCK-1", "Sevkiyat kapısı 1", "dock", "120", "360", "60", "40"],
-    ["CROSS-1", "Cross-aisle", "cross-aisle", "40", "176", "920", "20"],
+    ["DOCK-1", "Sevkiyat kapısı 1", "dock", "120", "360", "60", "40", "0,9", "evet"],
+    ["CROSS-1", "Cross-aisle", "cross-aisle", "40", "176", "920", "20", "0", "evet"],
   ],
 };
 

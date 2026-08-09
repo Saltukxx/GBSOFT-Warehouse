@@ -16,6 +16,10 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     ],
   },
   {
+    label: "Dijital ikiz",
+    items: [{ to: "/twin/3d", label: "3B depo", icon: "cube" }],
+  },
+  {
     label: "Optimizasyon",
     items: [
       { to: "/optimization/slotting", label: "Slotting Studio", icon: "slotting" },

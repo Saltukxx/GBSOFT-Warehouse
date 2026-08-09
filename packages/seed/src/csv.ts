@@ -46,50 +46,65 @@ const AISLE_BY_NUMBER = new Map(
   FACILITY_LAYOUT.aisles.map((aisle) => [aisle.number, aisle]),
 );
 
+/**
+ * Kayıttan şablon kolon sırasına göre satır üretir.
+ *
+ * Değerleri elle sıralamak, şablona kolon eklendiğinde bütün satırların
+ * sessizce kaymasına yol açar. Kolon adına bağlamak bunu imkânsız kılar;
+ * bilinmeyen kolon boş kalır, ki opsiyonel kolonlar için doğru davranış budur.
+ */
+function rowFor(kind: ImportKind, record: Record<string, string>): string[] {
+  return IMPORT_TEMPLATES[kind].columns.map((column) => record[column.name] ?? "");
+}
+
 function layoutRows(): string[][] {
   return LOCATIONS.map((location) => {
     const aisle = AISLE_BY_NUMBER.get(location.aisle)!;
     const face = aisle.faces.find((f) => f.zone === location.zone)!;
-    return [
-      location.zone,
-      ZONE_LABELS[location.zone],
-      String(location.aisle),
-      n(aisle.x),
-      n(aisle.walkwayWidth),
-      n(aisle.congestionScore),
-      face.side,
-      n(face.x),
-      n(face.width),
-      location.id,
-      String(location.bay),
-      String(location.level),
-      n(location.x),
-      n(location.y),
-      n(location.width),
-      n(location.height),
-      n(location.maxWeightKg),
-      n(location.maxVolumeM3),
-      location.equipment,
-      b(location.goldenZone),
-      n(location.distanceToDockM),
-      n(location.congestionScore),
-      b(location.blocked),
-      location.blockedReason ?? "",
-      n(location.dataQuality),
-    ];
+    // 3B kot kolonları bilinçli olarak boştur: golden dataset kurgusal bir
+    // tesistir ve rafları ölçülmemiştir. Sahne bunu türetip öyle bildirir.
+    return rowFor("layout", {
+      zoneCode: location.zone,
+      zoneName: ZONE_LABELS[location.zone],
+      aisleNumber: String(location.aisle),
+      aisleX: n(aisle.x),
+      walkwayWidth: n(aisle.walkwayWidth),
+      aisleCongestion: n(aisle.congestionScore),
+      side: face.side,
+      faceX: n(face.x),
+      faceWidth: n(face.width),
+      locationCode: location.id,
+      bay: String(location.bay),
+      level: String(location.level),
+      x: n(location.x),
+      y: n(location.y),
+      width: n(location.width),
+      height: n(location.height),
+      maxWeightKg: n(location.maxWeightKg),
+      maxVolumeM3: n(location.maxVolumeM3),
+      equipment: location.equipment,
+      goldenZone: b(location.goldenZone),
+      distanceToDockM: n(location.distanceToDockM),
+      congestionScore: n(location.congestionScore),
+      blocked: b(location.blocked),
+      blockedReason: location.blockedReason ?? "",
+      dataQuality: n(location.dataQuality),
+    });
   });
 }
 
 function floorAreaRows(): string[][] {
-  return FACILITY_LAYOUT.floorAreas.map((area) => [
-    area.id,
-    area.label,
-    area.kind,
-    n(area.x),
-    n(area.y),
-    n(area.width),
-    n(area.height),
-  ]);
+  return FACILITY_LAYOUT.floorAreas.map((area) =>
+    rowFor("floor-area", {
+      code: area.id,
+      label: area.label,
+      kind: area.kind,
+      x: n(area.x),
+      y: n(area.y),
+      width: n(area.width),
+      height: n(area.height),
+    }),
+  );
 }
 
 function skuRows(): string[][] {

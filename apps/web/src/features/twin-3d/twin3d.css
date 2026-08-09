@@ -1,0 +1,254 @@
+/* 3B dijital ikiz ekranı — Faz 6.
+   Sahne kendi ölçüsünü alır; kontroller sağ raylda durur. */
+
+.twin3d__badges {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.twin3d__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .twin3d__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.twin3d__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.twin3d__stage {
+  position: relative;
+  height: 560px;
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  border: 1px solid var(--line-subtle);
+  overflow: hidden;
+}
+
+/* Klavye ile gezinen kullanıcı sahnenin odakta olduğunu görmeli. */
+.twin3d__stage:focus-visible {
+  outline: 2px solid var(--blue-700);
+  outline-offset: 2px;
+}
+
+.twin3d__stage canvas {
+  display: block;
+  touch-action: none;
+}
+
+.twin3d__loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: var(--text-xs);
+  color: var(--ink-600);
+}
+
+/* --- Katman lejantı ------------------------------------------------- */
+
+.twin3d__legend {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--ink-700);
+}
+
+.twin3d__legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.twin3d__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.twin3d__ramp {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.twin3d__rampbar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line-subtle);
+}
+
+.twin3d__hint {
+  margin-top: var(--space-3);
+}
+
+/* --- Filtreler ------------------------------------------------------ */
+
+.twin3d__filter {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.twin3d__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.twin3d__chip {
+  font: inherit;
+  font-size: var(--text-2xs);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-subtle);
+  background: var(--surface-0);
+  color: var(--ink-600);
+  cursor: pointer;
+}
+
+.twin3d__chip[aria-pressed="true"] {
+  background: var(--blue-100);
+  border-color: var(--blue-600);
+  color: var(--blue-700);
+}
+
+.twin3d__slider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.twin3d__slider input {
+  flex: 1;
+}
+
+.twin3d__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--ink-700);
+}
+
+/* --- Seçim ayrıntısı ------------------------------------------------ */
+
+.twin3d__detail {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.twin3d__code {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  color: var(--ink-950);
+}
+
+.twin3d__dl {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.twin3d__dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.twin3d__dl dt {
+  color: var(--ink-500);
+}
+
+.twin3d__dl dd {
+  margin: 0;
+  color: var(--ink-900);
+  text-align: right;
+}
+
+/* --- Plan senaryosu lejantı ----------------------------------------- */
+
+.twin3d__count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-500);
+}
+
+/* --- Rota replay ---------------------------------------------------- */
+
+.twin3d__replay {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.twin3d__transport {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.twin3d__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  /* Uzun planlarda panel sayfayı taşırmasın. */
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.twin3d__step {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-700);
+  font-size: var(--text-2xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.twin3d__step:hover {
+  background: var(--surface-1);
+}
+
+.twin3d__step[aria-current="true"] {
+  background: var(--blue-100);
+  border-color: var(--blue-600);
+  color: var(--blue-700);
+}
+
+.twin3d__steplabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.twin3d__stepdist {
+  flex: none;
+  font-family: var(--font-mono);
+  color: var(--ink-500);
+}

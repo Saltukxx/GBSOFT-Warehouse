@@ -244,6 +244,12 @@ export const layoutHandler: ImportHandler = {
           blocked: readBoolean(row, "blocked") ?? false,
           blockedReason: readString(row, "blockedReason"),
           dataQuality: readNumber(row, "dataQuality") ?? 1,
+          // 3B kot ölçülmemişse null kalır. Sahne varsayılan raf profilinden
+          // türetir ve sonucu "türetilmiş" diye bildirir; buraya sayı uydurmak
+          // ölçülmemiş bir şeyi ölçülmüş yapardı.
+          levelElevationM: readNumber(row, "levelElevationM") ?? null,
+          levelClearHeightM: readNumber(row, "levelClearHeightM") ?? null,
+          depthM: readNumber(row, "depthM") ?? null,
         };
       }),
     });
@@ -346,6 +352,8 @@ export const floorAreaHandler: ImportHandler = {
         y: reqNumber(row, "y"),
         width: reqNumber(row, "width"),
         height: reqNumber(row, "height"),
+        heightM: readNumber(row, "heightM") ?? null,
+        traversable: readBoolean(row, "traversable") ?? null,
       };
       await tx.floorArea.upsert({
         where: {
