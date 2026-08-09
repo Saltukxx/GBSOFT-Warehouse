@@ -28,9 +28,13 @@ __pycache__/
 venv/
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
 
 # Veritabanı volume'leri
 .data/
+
+# npm run export:csv çıktısı — golden dataset'ten her an yeniden üretilir
+seed-csv/
 
 # Editör ve işletim sistemi
 .DS_Store

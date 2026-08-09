@@ -29,16 +29,32 @@ export type ReoptimizeRequest = {
 
 export type ReoptimizeResponse = {
   runId: string;
-  status: "feasible" | "infeasible";
+  status: "feasible" | "infeasible" | "timeout" | "failed";
   planId: string;
   solverVersion: string;
+  solutionQuality?: "optimal" | "feasible" | "none";
   objectiveDeltaPct: number;
+  gapPct?: number;
   hardViolations: number;
   moveTaskCount: number;
   solveDurationMs: number;
   /** infeasible durumunda operatöre gösterilen nedenler (§19.4). */
   infeasibilityReasons?: string[];
   relaxationOptions?: string[];
+};
+
+export type OptimizationRunStatus =
+  | "queued"
+  | "running"
+  | ReoptimizeResponse["status"];
+
+export type CreateOptimizationRunResponse = {
+  runId: string;
+  status: "queued";
+};
+
+export type OptimizationRunResponse = Omit<ReoptimizeResponse, "status"> & {
+  status: OptimizationRunStatus;
 };
 
 /** Solver adımları — sahte "AI düşünüyor" metni değil, gerçek aşamalar (§8.7). */

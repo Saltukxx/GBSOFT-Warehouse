@@ -19,7 +19,17 @@ export { ApiError } from "./demoAdapter";
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "1";
 
 /** Canlı API'ye bağlanmış uçlar. */
-export const LIVE_ENDPOINTS = ["layout"] as const;
+export const LIVE_ENDPOINTS = [
+  "layout",
+  "imports",
+  "data-quality",
+  "picking-time",
+  "reoptimize",
+  "slot-plans",
+  "move-tasks",
+  "publish",
+  "rollback",
+] as const;
 
 /**
  * Henüz golden dataset'ten okunan uçlar. Demo modunda olmasak bile bunlar
@@ -27,23 +37,40 @@ export const LIVE_ENDPOINTS = ["layout"] as const;
  */
 export const FIXTURE_ENDPOINTS = [
   "overview",
-  "picking-time",
-  "slot-plans",
-  "move-tasks",
-  "data-quality",
-  "reoptimize",
-  "publish",
 ] as const;
 
 export const fetchLayout = DEMO_MODE ? demo.fetchLayout : http.fetchLayout;
 
-// --- Aşağıdakiler sırasıyla canlıya bağlanacak (Faz 1-5) ---
+// Veri girişi. Demo modunda doğrulama tarayıcıda gerçekten çalışır — aynı
+// @gbsoft/domain motoru — ama yazma yapılmaz ve arayüz bunu söyler.
+export const fetchImportTemplates = DEMO_MODE
+  ? demo.fetchImportTemplates
+  : http.fetchImportTemplates;
+export const importTemplateUrl = DEMO_MODE
+  ? demo.importTemplateUrl
+  : http.importTemplateUrl;
+export const uploadImport = DEMO_MODE ? demo.uploadImport : http.uploadImport;
+export const fetchImportBatches = DEMO_MODE
+  ? demo.fetchImportBatches
+  : http.fetchImportBatches;
+export const fetchImportBatch = DEMO_MODE
+  ? demo.fetchImportBatch
+  : http.fetchImportBatch;
+
+export const fetchDataQuality = DEMO_MODE
+  ? demo.fetchDataQuality
+  : http.fetchDataQuality;
+
+export const fetchPickingTime = DEMO_MODE
+  ? demo.fetchPickingTime
+  : http.fetchPickingTime;
+
+// --- Aşağıdakiler Faz 5'te canlıya bağlanacak ---
 export const fetchOverview = demo.fetchOverview;
 export const fetchSkus = demo.fetchSkus;
-export const fetchPickingTime = demo.fetchPickingTime;
-export const fetchSlotPlan = demo.fetchSlotPlan;
-export const fetchMoveTasks = demo.fetchMoveTasks;
-export const fetchPlanVersions = demo.fetchPlanVersions;
-export const fetchDataQuality = demo.fetchDataQuality;
-export const reoptimize = demo.reoptimize;
-export const publishMoveTasks = demo.publishMoveTasks;
+export const fetchSlotPlan = DEMO_MODE ? demo.fetchSlotPlan : http.fetchSlotPlan;
+export const fetchMoveTasks = DEMO_MODE ? demo.fetchMoveTasks : http.fetchMoveTasks;
+export const fetchPlanVersions = DEMO_MODE ? demo.fetchPlanVersions : http.fetchPlanVersions;
+export const reoptimize = DEMO_MODE ? demo.reoptimize : http.reoptimize;
+export const publishMoveTasks = DEMO_MODE ? demo.publishMoveTasks : http.publishMoveTasks;
+export const rollbackSlotPlan = DEMO_MODE ? demo.rollbackSlotPlan : http.rollbackSlotPlan;

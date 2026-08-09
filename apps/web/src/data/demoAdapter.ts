@@ -1,11 +1,25 @@
 import type {
+  DataQualityResponse,
   FacilityLayoutResponse,
+  ImportBatchSummary,
+  ImportKind,
+  ImportReport,
+  ImportTemplate,
   MoveTask,
+  PickingTimeResponse,
   SlotPlan,
 } from "@gbsoft/domain";
 import type {
   ReoptimizeRequest,
   ReoptimizeResponse,
+} from "@gbsoft/domain";
+import {
+  DEFAULT_PICK_TIME_PARAMETERS,
+  IMPORT_KINDS,
+  IMPORT_TEMPLATES,
+  templateToCsvRows,
+  toCsv,
+  validateImportCsv,
 } from "@gbsoft/domain";
 
 import {
@@ -26,6 +40,7 @@ import {
   PLAN_VERSIONS,
   QUALITY_ISSUES,
   READINESS_PCT,
+  SOURCE_HEALTH,
   SKUS,
   VARIANCE_ROWS,
   ZONE_WORKLOAD,
@@ -124,13 +139,41 @@ export async function fetchSkus(signal?: AbortSignal) {
 }
 
 /* GET /api/facilities/:id/picking-time */
-export async function fetchPickingTime(signal?: AbortSignal) {
+export async function fetchPickingTime(
+  signal?: AbortSignal,
+): Promise<PickingTimeResponse> {
   return delay(
     {
+      facilityCode: FACILITY.id,
       plan: PLAN_BREAKDOWN,
       actual: ACTUAL_BREAKDOWN,
       variance: VARIANCE_ROWS,
-      modelQuality: MODEL_QUALITY,
+      model: {
+        version: MODEL_QUALITY.modelVersion,
+        parameters: DEFAULT_PICK_TIME_PARAMETERS,
+        calibrated: false,
+        algorithm: "demo-simulation",
+        sampleSize: MODEL_QUALITY.sampleLines,
+        trainedFrom: null,
+        trainedTo: null,
+        p50MaeSec: 1.8,
+        p90CoveragePct: MODEL_QUALITY.p90CoveragePct,
+        createdAt: FACILITY.snapshotAt,
+        calibrationMessage:
+          "Demo simülasyonu. Gerçek WMS görev verisi bağlandığında tesis bazında kalibre edilir.",
+      },
+      eventSummary: {
+        taskCount: MODEL_QUALITY.sampleLines,
+        labelledTaskCount: Math.round(
+          (MODEL_QUALITY.sampleLines * MODEL_QUALITY.dataCompletenessPct) / 100,
+        ),
+        trainingEligibleCount: MODEL_QUALITY.sampleLines,
+        pairedEventCount: Math.round(
+          (MODEL_QUALITY.sampleLines * MODEL_QUALITY.dataCompletenessPct) / 100,
+        ),
+        lateEventCount: 0,
+      },
+      actualWindowLabel: MODEL_QUALITY.trainingWindow,
     },
     LATENCY.pickingTime,
     signal,
@@ -171,9 +214,31 @@ export async function fetchPlanVersions(signal?: AbortSignal) {
 }
 
 /* GET /api/data-quality */
-export async function fetchDataQuality(signal?: AbortSignal) {
+export async function fetchDataQuality(
+  signal?: AbortSignal,
+): Promise<DataQualityResponse> {
+  const issues = QUALITY_ISSUES.map((issue) => ({
+    ...issue,
+    blocksPublish: issue.priority === "Kritik",
+    detectedAt: FACILITY.snapshotAt,
+  }));
   return delay(
-    { readinessPct: READINESS_PCT, coverage: COVERAGE, issues: QUALITY_ISSUES },
+    {
+      facilityCode: FACILITY.id,
+      readinessPct: READINESS_PCT,
+      coverage: COVERAGE,
+      issues,
+      sourceHealth: SOURCE_HEALTH,
+      publishGate: {
+        allowed: false,
+        blockingIssueCodes: issues
+          .filter((issue) => issue.blocksPublish)
+          .map((issue) => issue.id),
+        reason: "1 kritik veri kalitesi sorunu plan yayınını blokluyor.",
+      },
+      blockingIssueCount: issues.filter((issue) => issue.blocksPublish).length,
+      lastValidatedAt: FACILITY.snapshotAt,
+    },
     LATENCY.dataQuality,
     signal,
   );
@@ -233,5 +298,115 @@ export async function publishMoveTasks(
   return delay(
     { published: taskIds.length, planId, mode: "demo" as const },
     LATENCY.publish,
+  );
+}
+
+export async function rollbackSlotPlan(
+  planId: string,
+  targetPlanId: string,
+): Promise<{ rolledBackPlanId: string; activePlanId: string; publishedTasksUnaffected: true }> {
+  return delay({ rolledBackPlanId: planId, activePlanId: targetPlanId, publishedTasksUnaffected: true as const }, LATENCY.publish);
+}
+
+/* ------------------------------------------------------------------ */
+/* Veri girişi                                                         */
+/* ------------------------------------------------------------------ */
+
+/* GET /api/imports/templates */
+export async function fetchImportTemplates(
+  signal?: AbortSignal,
+): Promise<ImportTemplate[]> {
+  return delay(
+    IMPORT_KINDS.map((kind) => IMPORT_TEMPLATES[kind]),
+    LATENCY.dataQuality,
+    signal,
+  );
+}
+
+/**
+ * Demo modunda şablon dosyası tarayıcıda üretilir; sunucuya ihtiyaç yoktur.
+ * Türkçe Excel için noktalı virgül ayraç ve BOM ile.
+ */
+export function importTemplateUrl(kind: ImportKind): string {
+  const csv = toCsv(templateToCsvRows(IMPORT_TEMPLATES[kind]), ";");
+  const blob = new Blob(["\uFEFF" + csv + "\r\n"], {
+    type: "text/csv;charset=utf-8",
+  });
+  return URL.createObjectURL(blob);
+}
+
+/**
+ * POST /api/imports/:kind — demo karşılığı.
+ *
+ * Doğrulama tarayıcıda gerçekten çalışır: aynı @gbsoft/domain motoru, aynı
+ * satır bazlı rapor. Yazma ise yapılmaz — demo modunda veritabanı yoktur ve
+ * "uygulandı" demek yalan olurdu.
+ */
+export async function uploadImport(
+  kind: ImportKind,
+  fileName: string,
+  content: string,
+  _options: Record<string, string> = {},
+  dryRun = true,
+  signal?: AbortSignal,
+): Promise<ImportReport> {
+  const startedAt = new Date().toISOString();
+  const validation = validateImportCsv(kind, content);
+  const issues = [...validation.issues];
+
+  if (!dryRun) {
+    issues.push({
+      line: 0,
+      code: "demo-modu",
+      message:
+        "Demo modunda veritabanı yok: dosya doğrulandı ama yazılmadı. " +
+        "Gerçek yükleme için VITE_DEMO_MODE=0 ile API'ye bağlanın.",
+      severity: "warning",
+    });
+  }
+
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const rowsAccepted = validation.fatal ? 0 : validation.rows.length;
+
+  const report: ImportReport = {
+    batchId: null,
+    kind,
+    fileName,
+    facilityCode: FACILITY.id,
+    // Demo modunda her koşu kuru koşudur.
+    dryRun: true,
+    status: validation.fatal ? "REJECTED" : "VALIDATED",
+    delimiter: validation.delimiter,
+    rowsTotal: validation.rowsTotal,
+    rowsAccepted,
+    rowsRejected: validation.rowsTotal - rowsAccepted,
+    issues,
+    issuesTruncated: false,
+    errorCount,
+    warningCount: issues.length - errorCount,
+    summary: validation.fatal
+      ? []
+      : [
+          `${rowsAccepted} satır biçim doğrulamasından geçti.`,
+          "Demo modu: veritabanına hiçbir şey yazılmadı.",
+        ],
+    startedAt,
+    finishedAt: new Date().toISOString(),
+  };
+
+  return delay(report, LATENCY.dataQuality, signal);
+}
+
+/** Demo modunda içe aktarma geçmişi tutulmaz. */
+export async function fetchImportBatches(
+  signal?: AbortSignal,
+): Promise<ImportBatchSummary[]> {
+  return delay([], LATENCY.dataQuality, signal);
+}
+
+export async function fetchImportBatch(id: string): Promise<ImportReport> {
+  throw new ApiError(
+    "Demo modunda içe aktarma geçmişi tutulmaz.",
+    `/api/imports/batches/${id}`,
   );
 }

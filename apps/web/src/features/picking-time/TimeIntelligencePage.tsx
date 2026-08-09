@@ -6,7 +6,7 @@ import { TimeDecompositionBar } from "../../components/charts/TimeDecompositionB
 import { MapSurface } from "../../components/warehouse-map/MapSurface";
 import { DataTable } from "../../components/data-table/DataTable";
 import type { Column } from "../../components/data-table/DataTable";
-import type { ComponentKey } from "@gbsoft/domain";
+import type { ComponentKey, PickTimeVarianceRow } from "@gbsoft/domain";
 import { PICK_TIME_COMPONENTS } from "@gbsoft/domain";
 import { fetchPickingTime } from "../../data/api";
 import { useLayout } from "../../data/useLayout";
@@ -14,7 +14,6 @@ import {
   CONGESTED_AISLES,
   TRAVEL_ROUTE_SEGMENTS,
 } from "@gbsoft/seed";
-import type { VarianceRow } from "@gbsoft/seed";
 import { num, pctPlain, sec, secPlain } from "../../lib/format";
 import { useAsync } from "../../lib/useAsync";
 import "./time.css";
@@ -48,7 +47,7 @@ export function TimeIntelligencePage() {
     setSearchParams(next, { replace: true });
   }
 
-  const varianceColumns: Array<Column<VarianceRow>> = [
+  const varianceColumns: Array<Column<PickTimeVarianceRow>> = [
     {
       key: "component",
       header: "Bileşen",
@@ -192,10 +191,10 @@ export function TimeIntelligencePage() {
 
           <Panel
             title="Beklenen ve gerçekleşen"
-            note="Son vardiya · 2.840 order line"
+            note={state.data?.actualWindowLabel ?? "Gerçek görev snapshot'ı"}
             flush
           >
-            {state.data ? (
+            {state.data && state.data.variance.length > 0 ? (
               <DataTable
                 columns={varianceColumns}
                 rows={state.data.variance}
@@ -208,6 +207,13 @@ export function TimeIntelligencePage() {
                   )
                 }
               />
+            ) : state.data ? (
+              <div style={{ padding: "var(--space-4)" }}>
+                <Note tone="warning">
+                  Gerçekleşen süre analizi için henüz uygun görev etiketi yok.
+                  Beklenen değerler aktif baseline modelden hesaplanıyor.
+                </Note>
+              </div>
             ) : (
               <div style={{ padding: "var(--space-4)" }}>
                 <Skeleton height={140} />
@@ -215,7 +221,7 @@ export function TimeIntelligencePage() {
             )}
           </Panel>
 
-          {selected === "travel" ? (
+          {selected === "travel" && state.data?.actual ? (
             <Panel
               title="Travel kök neden"
               note="A-03 ve A-04 koridorları kırmızı çerçeveli"
@@ -296,11 +302,13 @@ export function TimeIntelligencePage() {
             </Panel>
           ) : null}
 
-          {selectedMeta && selected !== "travel" ? (
+          {selectedMeta && (selected !== "travel" || !state.data?.actual) ? (
             <Panel title={`${selectedMeta.label} bileşeni`}>
               <p className="text-sm">{selectedMeta.definition}</p>
               <p className="text-sm muted" style={{ marginTop: 8 }}>
-                {selected === "congestion"
+                {selected === "travel" && !state.data?.actual
+                  ? "Gerçek görev etiketi olmadığı için route sapması ve kök neden üretilmiyor. Graf mesafesi yalnız baseline tahminde kullanılıyor."
+                  : selected === "congestion"
                   ? "Congestion kaybının %71'i A-03 ve A-04 koridorlarında oluşuyor. Slot planı bu iki koridordaki pick yoğunluğunu dağıtıyor."
                   : selected === "search"
                     ? "Arama süresi, görsel olarak benzer 11 SKU'nun komşu gözlerde durmasından etkileniyor. Slot planı bu SKU'lardan 4'ünü ayırıyor."
@@ -315,27 +323,54 @@ export function TimeIntelligencePage() {
             {state.data ? (
               <div className="stack stack-3">
                 <dl className="deflist">
-                  <dt>P50 kalibrasyon</dt>
-                  <dd>{state.data.modelQuality.p50Calibration}</dd>
+                  <dt>Kalibrasyon</dt>
+                  <dd className={state.data.model.calibrated ? "tone-positive" : "tone-warning"}>
+                    {state.data.model.calibrated ? "Kalibre" : "Kalibre değil"}
+                  </dd>
+                  <dt>Algoritma</dt>
+                  <dd className="mono">{state.data.model.algorithm}</dd>
+                  <dt>P50 medyan hata</dt>
+                  <dd>
+                    {state.data.model.p50MaeSec === null
+                      ? "—"
+                      : secPlain(state.data.model.p50MaeSec)}
+                  </dd>
                   <dt>P90 coverage</dt>
-                  <dd>{pctPlain(state.data.modelQuality.p90CoveragePct)}</dd>
+                  <dd>
+                    {state.data.model.p90CoveragePct === null
+                      ? "—"
+                      : pctPlain(state.data.model.p90CoveragePct)}
+                  </dd>
                   <dt>Data completeness</dt>
                   <dd>
-                    {pctPlain(state.data.modelQuality.dataCompletenessPct)}
+                    {pctPlain(
+                      state.data.eventSummary.taskCount === 0
+                        ? 0
+                        : (state.data.eventSummary.labelledTaskCount /
+                            state.data.eventSummary.taskCount) *
+                            100,
+                    )}
                   </dd>
                   <dt>Model sürümü</dt>
-                  <dd className="mono">{state.data.modelQuality.modelVersion}</dd>
+                  <dd className="mono">{state.data.model.version}</dd>
                   <dt>Son güncelleme</dt>
-                  <dd className="mono">{state.data.modelQuality.updatedAt}</dd>
+                  <dd className="mono">
+                    {new Date(state.data.model.createdAt).toLocaleString("tr-TR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </dd>
                 </dl>
                 <p className="text-2xs subtle">
-                  Eğitim penceresi {state.data.modelQuality.trainingWindow} ·{" "}
-                  {num(state.data.modelQuality.sampleLines)} order line.{" "}
-                  {state.data.modelQuality.p50CalibrationDetail}.
+                  Eğitim için uygun {num(state.data.eventSummary.trainingEligibleCount)} görev ·{" "}
+                  {num(state.data.eventSummary.pairedEventCount)} başlangıç/bitiş çifti ·{" "}
+                  {num(state.data.eventSummary.lateEventCount)} geç gelen olay.
                 </p>
-                <Note tone="neutral">
-                  P90 coverage hedef aralığın altında kalırsa tahmin aralığı
-                  genişletilir; plan kazancı buna göre yeniden ölçülür.
+                <Note tone={state.data.model.calibrated ? "neutral" : "warning"}>
+                  {state.data.model.calibrationMessage}
                 </Note>
               </div>
             ) : (
@@ -344,7 +379,7 @@ export function TimeIntelligencePage() {
           </Panel>
 
           <Panel title="Gerçekleşen dağılım" note="Son vardiya">
-            {state.data ? (
+            {state.data?.actual ? (
               <dl className="deflist">
                 <dt>Gerçekleşen P50</dt>
                 <dd className="mono">{secPlain(state.data.actual.p50Sec)}</dd>
@@ -353,10 +388,19 @@ export function TimeIntelligencePage() {
                 <dt>Plan P50</dt>
                 <dd className="mono">{secPlain(state.data.plan.p50Sec)}</dd>
                 <dt>Sapma</dt>
-                <dd className="mono tone-negative">
+                <dd className={`mono ${
+                  state.data.actual.p50Sec > state.data.plan.p50Sec
+                    ? "tone-negative"
+                    : "tone-positive"
+                }`}>
                   {sec(state.data.actual.p50Sec - state.data.plan.p50Sec)}
                 </dd>
               </dl>
+            ) : state.data ? (
+              <Note tone="neutral">
+                Gerçekleşen dağılım, süre etiketi taşıyan görevler geldiğinde
+                gösterilecek. Baseline değer ölçülmüş sonuç değildir.
+              </Note>
             ) : (
               <Skeleton height={120} />
             )}

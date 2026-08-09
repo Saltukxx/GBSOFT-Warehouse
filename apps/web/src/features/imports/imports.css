@@ -1,0 +1,153 @@
+.imports {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-content: start;
+  align-items: start;
+}
+
+.imports__report,
+.imports__history {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1023px) {
+  .imports {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- Tür listesi ---------------------------------------------------- */
+
+.kindlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.kindlist__item {
+  all: unset;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.kindlist__item:hover {
+  background: var(--surface-2);
+}
+
+.kindlist__item:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: -2px;
+}
+
+.kindlist__item--active {
+  background: var(--surface-2);
+  border-color: var(--line-subtle);
+}
+
+.kindlist__title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ink-900);
+}
+
+.kindlist__meta {
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+  font-family: var(--font-mono);
+}
+
+/* --- Yükleme paneli -------------------------------------------------- */
+
+.imports__upload {
+  display: block;
+}
+
+.imports__upload .panel__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.imports__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.imports__options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.imports__options legend {
+  padding: 0 6px;
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+.imports__options label {
+  display: grid;
+  gap: 3px;
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+.imports__options input[type="text"] {
+  width: 110px;
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-900);
+  background: var(--surface-1);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.imports__options input[type="text"]:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: -1px;
+}
+
+/* `.imports__options label` ile aynı özgüllükte olmalı, aksi halde
+   yukarıdaki `display: grid` kuralı onay kutusunu satırdan çıkarır. */
+.imports__options label.imports__check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding-bottom: 5px;
+}
+
+.imports__file {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.imports__file input[type="file"] {
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+  max-width: 100%;
+}
+
+.imports__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

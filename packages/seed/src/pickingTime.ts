@@ -1,4 +1,4 @@
-import type { PickTimeBreakdown } from "@gbsoft/domain";
+import type { PickTimeBreakdown, PickTimeVarianceRow } from "@gbsoft/domain";
 
 /**
  * Picking süresi bileşenleri.
@@ -31,15 +31,7 @@ export const ACTUAL_BREAKDOWN: PickTimeBreakdown = {
   p90Sec: 118.7,
 };
 
-export type VarianceRow = {
-  key: string;
-  component: string;
-  expected: number;
-  actual: number;
-  delta: number;
-  rootCause: string;
-  causeTone: "normal" | "attention";
-};
+export type VarianceRow = PickTimeVarianceRow;
 
 /** Beklenen / gerçekleşen tablosu — §7.4. */
 export const VARIANCE_ROWS: VarianceRow[] = [

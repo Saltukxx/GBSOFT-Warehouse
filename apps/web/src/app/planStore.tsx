@@ -123,10 +123,28 @@ const PlanContext = createContext<Store | null>(null);
 export function PlanProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
 
-  const plan =
+  const fixturePlan =
     state.activePlanId === LOCKED_REOPTIMIZED_PLAN.id
       ? LOCKED_REOPTIMIZED_PLAN
       : DEMO_SLOT_PLAN;
+  // Faz 4'te run özeti canlıdır; detay öneri/move-task okumaları Faz 5'te
+  // canlıya geçene kadar fixture gövdesinin üzerine gerçek run KPI'ları yazılır.
+  const plan = useMemo<SlotPlan>(
+    () =>
+      state.lastRun?.status === "feasible"
+        ? {
+            ...fixturePlan,
+            id: state.lastRun.planId,
+            runId: state.lastRun.runId,
+            solverVersion: state.lastRun.solverVersion,
+            netOperationDeltaPct: state.lastRun.objectiveDeltaPct,
+            hardViolationCount: state.lastRun.hardViolations,
+            moveTaskCount: state.lastRun.moveTaskCount,
+            solveDurationMs: state.lastRun.solveDurationMs,
+          }
+        : fixturePlan,
+    [fixturePlan, state.lastRun],
+  );
 
   const moveTasks =
     state.activePlanId === LOCKED_REOPTIMIZED_PLAN.id ? MOVE_TASKS_R1 : MOVE_TASKS;

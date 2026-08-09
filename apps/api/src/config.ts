@@ -19,6 +19,7 @@ const schema = z.object({
   /// Tek kiracı kurulumda varsayılan kiracı. Şema baştan tenant-scoped'dır.
   DEFAULT_TENANT_ID: z.string().default("gbsoft-pilot"),
   WEB_ORIGIN: z.string().default("http://localhost:5173"),
+  OPTIMIZER_URL: z.string().url().default("http://127.0.0.1:8001"),
 });
 
 const parsed = schema.safeParse(process.env);

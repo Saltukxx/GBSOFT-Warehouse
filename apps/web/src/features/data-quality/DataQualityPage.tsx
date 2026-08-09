@@ -11,11 +11,7 @@ import { Drawer } from "../../components/ui/Overlay";
 import { DataTable } from "../../components/data-table/DataTable";
 import type { Column } from "../../components/data-table/DataTable";
 import { fetchDataQuality } from "../../data/api";
-import type { QualityIssue } from "@gbsoft/seed";
-import {
-  SOURCE_HEALTH,
-  missingDimensionRows,
-} from "@gbsoft/seed";
+import type { QualityIssue } from "@gbsoft/domain";
 import { num, pctPlain } from "../../lib/format";
 import { useAsync } from "../../lib/useAsync";
 import "./dataquality.css";
@@ -43,7 +39,7 @@ export function DataQualityPage() {
           {r.priority}
         </span>
       ),
-      sortValue: (r) => ["Kritik", "Yüksek", "Orta"].indexOf(r.priority),
+      sortValue: (r) => ["Kritik", "Yüksek", "Orta", "Düşük"].indexOf(r.priority),
     },
     {
       key: "problem",
@@ -92,23 +88,31 @@ export function DataQualityPage() {
               label: "Genel readiness",
               value: pctPlain(state.data.readinessPct),
               delta: "eşik %95",
-              deltaTone: "warning",
-              context: "Ağırlıklı coverage · plan yayını için eşik altında",
+              deltaTone: state.data.readinessPct >= 95 ? "positive" : "warning",
+              context:
+                state.data.readinessPct >= 95
+                  ? "Ağırlıklı coverage · readiness eşiği karşılandı"
+                  : "Ağırlıklı coverage · readiness eşiğinin altında",
             },
             {
               label: "Plan bloklayan sorun",
-              value: "1",
-              context: "6 SKU'da ölçü verisi eksik",
+              value: String(state.data.blockingIssueCount),
+              context: state.data.publishGate.allowed
+                ? "Plan yayın kapısı açık"
+                : (state.data.publishGate.reason ?? "Yayın kapısı bloklu"),
             },
             {
               label: "Açık sorun",
               value: String(state.data.issues.length),
-              context: "1 kritik · 1 yüksek · 1 orta",
+              context: "Gerçek veri snapshot'ından hesaplandı",
             },
             {
               label: "Son doğrulama",
-              value: "14:30",
-              context: "WMS master data · SFTP 06:15",
+              value: new Date(state.data.lastValidatedAt).toLocaleTimeString(
+                "tr-TR",
+                { hour: "2-digit", minute: "2-digit" },
+              ),
+              context: state.data.facilityCode,
             },
           ]}
         />
@@ -170,7 +174,7 @@ export function DataQualityPage() {
               </tr>
             </thead>
             <tbody>
-              {SOURCE_HEALTH.map((s) => (
+              {state.data?.sourceHealth.map((s) => (
                 <tr key={s.source}>
                   <th scope="row" style={{ fontWeight: 400 }}>
                     {s.source}
@@ -237,50 +241,9 @@ export function DataQualityPage() {
               </p>
             </section>
 
-            {openIssue.id === "DQ-118" ? (
-              <section>
-                <h3 className="section-label">Etkilenen SKU'lar</h3>
-                <table
-                  className="table table--compact"
-                  style={{ marginTop: 6 }}
-                >
-                  <caption className="sr-only">
-                    Fiziksel ölçüsü eksik SKU'lar
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">SKU</th>
-                      <th scope="col">Ürün</th>
-                      <th scope="col">Lokasyon</th>
-                      <th scope="col" className="num">
-                        Pick/gün
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {missingDimensionRows().map((row) => (
-                      <tr key={row.id}>
-                        <th scope="row" className="mono" style={{ fontWeight: 400 }}>
-                          {row.id}
-                        </th>
-                        <td>{row.name}</td>
-                        <td className="mono">{row.location}</td>
-                        <td className="num mono">{row.picksPerDay}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ marginTop: 10 }}>
-                  <Note tone="warning">
-                    Eksik alanlar: genişlik, derinlik, yükseklik, ağırlık. Bu
-                    SKU'lar için kapasite kısıtı doğrulanamadığından slot planı
-                    ve WMS write-back bloklanır.
-                  </Note>
-                </div>
-              </section>
-            ) : (
-              <section>
-                <h3 className="section-label">Etkilenen kayıtlar</h3>
+            <section>
+              <h3 className="section-label">Etkilenen kayıtlar</h3>
+              {openIssue.affectedIds.length > 0 ? (
                 <div
                   className="row"
                   style={{ flexWrap: "wrap", marginTop: 6, gap: 6 }}
@@ -291,8 +254,19 @@ export function DataQualityPage() {
                     </span>
                   ))}
                 </div>
-              </section>
-            )}
+              ) : (
+                <p className="text-sm muted" style={{ marginTop: 6 }}>
+                  Sorun tesis veya veri akışı seviyesinde; tekil kayıt listesi yok.
+                </p>
+              )}
+              {openIssue.blocksPublish ? (
+                <div style={{ marginTop: 10 }}>
+                  <Note tone="warning">
+                    Bu sorun çözülene kadar plan yayın kapısı kapalıdır.
+                  </Note>
+                </div>
+              ) : null}
+            </section>
 
             <section>
               <h3 className="section-label">Sorumlu ve eylem</h3>

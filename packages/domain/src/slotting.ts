@@ -98,6 +98,20 @@ export type PlanVersion = {
   state: "arşiv" | "aktif" | "taslak";
 };
 
+export type PlanMeasurement = {
+  planId: string;
+  status: "not-published" | "insufficient-data" | "measured";
+  expectedDeltaPct: number;
+  actualDeltaPct?: number;
+  baselineP50Sec?: number;
+  observedP50Sec?: number;
+  baselineSamples: number;
+  observedSamples: number;
+  minimumSamples: number;
+  windowStart?: string;
+  windowEnd?: string;
+};
+
 /** Slot skorlama fonksiyonu (§14.2). */
 export function slotScore(input: {
   expectedPickSeconds: number;

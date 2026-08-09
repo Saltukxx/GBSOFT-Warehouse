@@ -50,6 +50,7 @@ export function OptimizerModal({
   const [running, setRunning] = useState(false);
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState<ReoptimizeResponse | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
 
   function applyProfile(next: ObjectiveProfile) {
@@ -81,6 +82,7 @@ export function OptimizerModal({
     setRunning(true);
     setStep(0);
     setResult(null);
+    setFailure(null);
 
     const request: ReoptimizeRequest = {
       planId,
@@ -94,16 +96,22 @@ export function OptimizerModal({
       frozenZones,
     };
 
-    const [response] = await Promise.all([
-      reoptimize(request),
-      new Promise((resolve) =>
-        window.setTimeout(resolve, STEP_MS * SOLVER_STEPS.length),
-      ),
-    ]);
-
-    setStep(SOLVER_STEPS.length - 1);
-    setResult(response);
-    setRunning(false);
+    try {
+      const [response] = await Promise.all([
+        reoptimize(request),
+        new Promise((resolve) =>
+          window.setTimeout(resolve, STEP_MS * SOLVER_STEPS.length),
+        ),
+      ]);
+      setStep(SOLVER_STEPS.length - 1);
+      setResult(response);
+    } catch (error) {
+      setFailure(
+        error instanceof Error ? error.message : "Optimizasyon çalıştırılamadı.",
+      );
+    } finally {
+      setRunning(false);
+    }
   }
 
   const budgetTooLow = moveBudget < 12;
@@ -292,6 +300,8 @@ export function OptimizerModal({
           </Note>
         ) : null}
 
+        {failure ? <Note tone="danger">{failure}</Note> : null}
+
         {step >= 0 ? (
           <section ref={progressRef}>
             <h3 className="section-label">Çalıştırma durumu</h3>
@@ -381,6 +391,14 @@ export function OptimizerModal({
               </button>
             </div>
           </section>
+        ) : null}
+
+        {result?.status === "timeout" || result?.status === "failed" ? (
+          <Note tone="danger">
+            {result.status === "timeout"
+              ? "Zaman sınırında uygulanabilir çözüm bulunamadı. Zaman sınırını veya kısıtları gözden geçirin."
+              : "Optimizasyon servisi çalıştırmayı tamamlayamadı. Çalıştırma kaydı hata ayrıntısıyla saklandı."}
+          </Note>
         ) : null}
       </div>
     </Modal>

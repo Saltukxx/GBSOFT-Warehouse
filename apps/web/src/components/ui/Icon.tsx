@@ -31,7 +31,9 @@ export type IconName =
   | "zoomIn"
   | "zoomOut"
   | "fit"
-  | "external";
+  | "external"
+  | "upload"
+  | "download";
 
 const PATHS: Record<IconName, string> = {
   overview: "M3 3h7v7H3zM14 3h7v4h-7zM14 10h7v11h-7zM3 13h7v8H3z",
@@ -62,6 +64,8 @@ const PATHS: Record<IconName, string> = {
   zoomOut: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M16 16l4 4M8 11h6",
   fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   external: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+  upload: "M12 15V3M8 7l4-4 4 4M4 15v5h16v-5",
+  download: "M12 3v12M8 11l4 4 4-4M4 15v5h16v-5",
 };
 
 type Props = {

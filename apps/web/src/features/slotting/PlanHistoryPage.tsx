@@ -4,6 +4,9 @@ import { usePlanStore } from "../../app/planStore";
 import { PLAN_VERSIONS } from "@gbsoft/seed";
 import { VERSIONS } from "@gbsoft/seed";
 import { pct } from "../../lib/format";
+import { fetchPlanVersions, rollbackSlotPlan } from "../../data/api";
+import { useAsync } from "../../lib/useAsync";
+import { useState } from "react";
 
 /**
  * Plan geçmişi — rollback yapılabileceğini gösterir (§1.4).
@@ -11,8 +14,10 @@ import { pct } from "../../lib/format";
  */
 export function PlanHistoryPage() {
   const store = usePlanStore();
+  const history = useAsync((signal) => fetchPlanVersions(signal), []);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const rows = [
+  const rows = history.status === "ready" ? history.data : [
     ...PLAN_VERSIONS,
     ...(store.activePlanId === "SP-2026-081-R1"
       ? [
@@ -78,8 +83,13 @@ export function PlanHistoryPage() {
                     <button
                       type="button"
                       className="btn btn--sm"
-                      disabled={v.state === "aktif"}
-                      onClick={() => store.reset()}
+                      disabled={v.state === "aktif" || v.id === store.plan.id}
+                      onClick={async () => {
+                        const result = await rollbackSlotPlan(store.plan.id, v.id);
+                        store.reset();
+                        setMessage(`${result.rolledBackPlanId} geri alındı; aktif plan ${result.activePlanId}. Yayınlanmış görevler değiştirilmedi.`);
+                        history.retry();
+                      }}
                     >
                       Bu sürüme dön
                     </button>
@@ -89,6 +99,8 @@ export function PlanHistoryPage() {
             </tbody>
           </table>
         </Panel>
+
+        {message ? <Note tone="positive">{message}</Note> : null}
 
         <Panel title="Lineage" note="Aktif plan">
           <dl className="deflist" style={{ maxWidth: 520 }}>

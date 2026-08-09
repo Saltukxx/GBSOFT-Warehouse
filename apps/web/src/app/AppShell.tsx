@@ -34,6 +34,8 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Sistem",
     items: [
+      { to: "/system/imports", label: "Veri aktarımı", icon: "upload" },
+      { to: "/system/layout", label: "Layout editörü", icon: "slotting" },
       { to: "/data-quality", label: "Veri kalitesi", icon: "quality" },
       { to: "/system/integrations", label: "Entegrasyonlar", icon: "integration" },
       { to: "/system/model", label: "Model ve solver", icon: "model" },

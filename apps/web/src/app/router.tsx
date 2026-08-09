@@ -6,6 +6,8 @@ import { SlottingStudioPage } from "../features/slotting/SlottingStudioPage";
 import { PlanHistoryPage } from "../features/slotting/PlanHistoryPage";
 import { MovePlanPage } from "../features/move-plan/MovePlanPage";
 import { DataQualityPage } from "../features/data-quality/DataQualityPage";
+import { ImportsPage } from "../features/imports/ImportsPage";
+import { LayoutEditorPage } from "../features/layout-editor/LayoutEditorPage";
 import { PlaceholderPage } from "../features/placeholder/PlaceholderPage";
 
 export const router = createBrowserRouter([
@@ -106,6 +108,8 @@ export const router = createBrowserRouter([
           />
         ),
       },
+      { path: "system/imports", element: <ImportsPage /> },
+      { path: "system/layout", element: <LayoutEditorPage /> },
       { path: "data-quality", element: <DataQualityPage /> },
       {
         path: "system/integrations",

@@ -20,7 +20,18 @@ npm install && cp .env.example .env && npm run build
 npm run db:up && npm run db:migrate && npm run db:seed
 ```
 
-İki terminalde:
+Önce Python optimizer'ı kurun (veya aşağıdaki Docker seçeneğini kullanın):
+
+```bash
+python3 -m venv services/optimizer/.venv
+services/optimizer/.venv/bin/pip install -e 'services/optimizer[dev]'
+```
+
+Üç terminalde:
+
+```bash
+npm run dev:optimizer
+```
 
 ```bash
 npm run dev:api
@@ -31,6 +42,9 @@ npm run dev
 ```
 
 Arayüz `http://localhost:5173`, API `http://127.0.0.1:3001`.
+Optimizer `http://127.0.0.1:8001`. PostgreSQL ve optimizer'ı Docker ile
+birlikte açmak için yerel Python kurulumu yerine `npm run services:up`
+kullanılabilir.
 
 Backend olmadan yalnız satış demosu için `.env` içinde `VITE_DEMO_MODE=1`
 yapmanız yeterlidir.
@@ -44,11 +58,17 @@ apps/
 packages/
 ├── domain/       @gbsoft/domain — paylaşılan tipler ve referans hesaplamalar
 └── seed/         @gbsoft/seed — golden dataset üreticileri
+services/
+└── optimizer/    FastAPI + OR-Tools CP-SAT slotting servisi
 ```
 
 `packages/domain` tek doğruluk kaynağıdır: süre modeli (`estimateLocationPickTimeSec`),
-slot skoru (`slotScore`) ve bütün alan tipleri web, API ve solver tarafından
-ortak kullanılır.
+slot skoru (`slotScore`), yürüyüş grafı/mesafe matrisi (`buildTwinGraph`,
+`distanceMatrix`), pick-time quantile kalibrasyonu (`calibratePickTimeModel`),
+içe aktarma şablonları ve CSV doğrulama motoru
+(`validateImportCsv`) ve bütün alan tipleri web, API ve solver tarafından
+ortak kullanılır. Doğrulama motorunun aynısı tarayıcıda da çalıştığı için
+demo modu backend olmadan gerçek doğrulama yapabiliyor.
 
 `packages/seed` üç yeri birden besler: veritabanı seed'i, arayüzün demo modu ve
 regresyon testleri. Böylece demo ile ürün asla farklı sayı göstermez.
@@ -59,13 +79,17 @@ regresyon testleri. Böylece demo ile ürün asla farklı sayı göstermez.
 |---|---|
 | `npm run dev` | Web geliştirme sunucusu |
 | `npm run dev:api` | API geliştirme sunucusu |
+| `npm run dev:optimizer` | Yerel Python optimizasyon servisi |
 | `npm run build` | Tüm workspace'leri derler (strict TypeScript) |
 | `npm test` | Birim ve veri tutarlılık testleri |
+| `npm run test:optimizer` | Solver hard constraint ve altın veri testleri |
 | `npm run test:e2e` | Playwright ana demo akışı |
 | `npm run db:up` / `db:down` | Veritabanı konteyneri |
+| `npm run services:up` | Veritabanı + optimizer konteynerleri |
 | `npm run db:migrate` | Prisma migration |
 | `npm run db:seed` | Golden dataset (idempotent) |
 | `npm run db:psql` | Konteyner içinden psql |
+| `npm run export:csv --workspace @gbsoft/api` | Golden dataset'i import şablonu biçiminde CSV'ye yazar |
 
 Host'ta `psql` veya PostgreSQL kurulu olması gerekmez. Veritabanı **5434**
 portunu kullanır; 5432/5433 başka projeler tarafından kullanıldığı için seçildi.
@@ -75,18 +99,87 @@ portunu kullanır; 5432/5433 başka projeler tarafından kullanıldığı için 
 | Faz | Kapsam | Durum |
 |---|---|---|
 | 0 | Monorepo, veritabanı, API iskeleti, layout ucu | **Tamam** |
-| 1 | Import şablonları, layout editörü, veri girişi | Sırada |
-| 2 | Twin graph, mesafe matrisi, veri kalitesi motoru | Bekliyor |
-| 3 | Pick-time modeli, event ingest, kalibrasyon | Bekliyor |
-| 4 | CP-SAT slotting solver (Python + OR-Tools) | Bekliyor |
-| 5 | Move plan, kısmi yayın, ölçüm, rollback | Bekliyor |
+| 1 | Import şablonları, veri giriş ekranı, kimlik eşlemesi | **Tamam** |
+| 1b | 2B layout editörü | **Tamam** |
+| 2 | Twin graph, mesafe matrisi, veri kalitesi motoru | **Tamam** |
+| 3 | Pick-time modeli, event ingest, kalibrasyon | **Tamam** |
+| 4 | CP-SAT slotting solver (Python + OR-Tools) | **Tamam** |
+| 5 | Move plan, kısmi yayın, ölçüm, rollback | **Tamam** |
 | 6 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Bekliyor |
 
 ### Hangi uç canlı?
 
 `apps/web/src/data/api.ts` içindeki `LIVE_ENDPOINTS` ve `FIXTURE_ENDPOINTS`
 listeleri, ürünün gerçekte ne kadarının canlı olduğunu tek bakışta gösterir.
-Şu an yalnız **layout** ucu veritabanından okur; kalanı golden dataset'ten gelir.
+Şu an **layout**, **veri aktarımı**, **veri kalitesi**, **pick-time/model**,
+**asenkron yeniden optimizasyon**, **slot planları**, **move-task yayını** ve
+**rollback** uçları veritabanıyla konuşur; yalnız operasyon özeti golden
+dataset'ten gelir. Aktif ikizin
+kalıcı grafı ve 96×96 mesafe matrisi de API'den okunabilir:
+
+```bash
+curl -s localhost:3001/api/facilities/MARMARA-DC-01/graph
+curl -s localhost:3001/api/facilities/MARMARA-DC-01/distance-matrix
+curl -s localhost:3001/api/facilities/MARMARA-DC-01/pick-time-model
+curl -s localhost:3001/api/facilities/MARMARA-DC-01/picking-time
+```
+
+Slotting Studio'daki yeniden optimizasyon canlıdır: `POST /api/optimization-runs`
+202 + `runId` döner; arayüz `GET /api/optimization-runs/:id` ile sonucu izler.
+Her koşu giriş/sonuç snapshot'ı, seed, solver/model sürümü, gap ve çözüm
+kalitesiyle PostgreSQL'de saklanır.
+
+Move Plan sunucudaki gerçek solver görevlerini gösterir. Yayın çağrısı
+`idempotency-key` ister, bağımlılık paketini sunucuda da böldürmez ve audit
+kaydı üretir. `GET /api/slot-plans/:id/measurement`, yayın öncesi/sonrası en
+az 50'şer gerçek görev olmadan ölçülmüş kazanç döndürmez.
+
+Kalibrasyon açık bir komuttur. En az 200 uygun `TASK_STARTED` /
+`TASK_COMPLETED` çifti yoksa yeni model sürümü üretmez:
+
+```bash
+curl -s -X POST localhost:3001/api/facilities/MARMARA-DC-01/pick-time-model/calibrate
+```
+
+## Veri girişi
+
+Müşteri konektörü yerine kendi giriş yüzeyimiz var: arayüzde
+**Sistem → Veri aktarımı** (dosya yükleme) ve **Sistem → Layout editörü**
+(geometriyi parametrik tanımlama), ya da doğrudan API.
+
+Layout editörü ayrı bir yazma yolu açmaz: ürettiği geometri, elle
+doldurulmuş bir dosyayla birebir aynı CSV satırlarına çevrilip aynı
+doğrulamadan geçer. Böylece iki giriş yolu arasında davranış farkı olamaz.
+
+Altı şablon: `layout` (geometri + göz kapasitesi), `floor-area`, `sku`
+(master + ölçü/ağırlık), `velocity`, `wave`, `pick-task`. Şablon tanımı
+`packages/domain/src/imports.ts` içinde tek yerdedir; API doğrulamayı,
+arayüz hem kolon dokümanını hem indirilebilir dosyayı aynı tanımdan üretir.
+
+```bash
+curl -sO localhost:3001/api/imports/templates/sku.csv
+```
+
+Dosyayı doldurduktan sonra önce **doğrulayın** — yükleme varsayılan olarak
+kuru koşudur ve hiçbir şey yazmaz:
+
+```bash
+curl -s -X POST "localhost:3001/api/imports/sku?facility=MARMARA-DC-01" -H 'content-type: text/csv' --data-binary @sku.csv
+```
+
+Yazmak ayrı ve açık bir komuttur: aynı isteğe `&dryRun=0` ekleyin.
+
+Kurallar:
+
+- **Hatalı kayıt sessizce atılmaz.** Reddedilen her satır numarası, kolonu ve
+  nedeniyle raporlanır; rapor `ImportBatch` içinde saklanır ve sonradan okunur.
+- **Kısmi ret başarıdır** (HTTP 200): geçerli satırlar yazılır. Geometri
+  istisnadır — tek hata dosyanın tamamını reddeder (HTTP 422), çünkü yarım
+  yazılmış bir dijital ikiz hiç yazılmamışından kötüdür.
+- **Türkçe Excel** olduğu gibi kabul edilir: noktalı virgül ayraç, ondalık
+  virgül, `GG.AA.YYYY` tarih ve BOM.
+- Golden dataset'i dolu örnek dosya olarak almak için:
+  `npm run export:csv --workspace @gbsoft/api -- ./seed-csv`
 
 ## Kararlar
 

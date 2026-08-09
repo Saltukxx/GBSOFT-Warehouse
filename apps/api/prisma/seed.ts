@@ -27,13 +27,14 @@ import {
   MISSING_DIMENSION_SKUS,
   MOVE_TASKS,
   PACKAGE_LABELS,
-  QUALITY_ISSUES,
   RECOMMENDATIONS,
   RESERVE_LOCATION,
   SKUS,
   VERSIONS,
   ZONE_LABELS,
 } from "@gbsoft/seed";
+import { evaluateDataQuality } from "../src/quality/engine.js";
+import { rebuildLayoutGraph } from "../src/twin/graph.js";
 
 // Ortam değişkenleri monorepo kökündeki tek .env dosyasından okunur.
 try {
@@ -58,12 +59,6 @@ const HANDLING: Record<string, HandlingClass> = {
   fragile: "FRAGILE",
   heavy: "HEAVY",
 };
-
-const PRIORITY = {
-  Kritik: "CRITICAL",
-  Yüksek: "HIGH",
-  Orta: "MEDIUM",
-} as const;
 
 async function main() {
   console.log(`Golden dataset yükleniyor · kiracı ${TENANT_ID}`);
@@ -251,6 +246,8 @@ async function main() {
       })),
     });
 
+    await rebuildLayoutGraph(tx, TENANT_ID, layoutVersion.id);
+
     const locationRows = await tx.location.findMany({
       where: { tenantId: TENANT_ID, layoutVersionId: layoutVersion.id },
       select: { id: true, code: true },
@@ -278,6 +275,19 @@ async function main() {
       select: { id: true, code: true },
     });
     const skuIdByCode = new Map(skuRows.map((s) => [s.code, s.id]));
+
+    await tx.identityMap.createMany({
+      data: SKUS.map((sku) => ({
+        tenantId: TENANT_ID,
+        facilityId: facility.id,
+        entityType: "sku",
+        sourceSystem: "seed",
+        sourceId: sku.id,
+        canonicalCode: sku.id,
+        firstSeenAt: SNAPSHOT_AT,
+        lastSeenAt: SNAPSHOT_AT,
+      })),
+    });
 
     await tx.skuDimension.createMany({
       data: SKUS.map((sku) => ({
@@ -376,6 +386,11 @@ async function main() {
         facilityId: facility.id,
         version: VERSIONS.model,
         parameters: DEFAULT_PICK_TIME_PARAMETERS as unknown as Prisma.InputJsonValue,
+        algorithm: "analytic-baseline-v1",
+        metrics: {
+          minimumSampleSize: 200,
+          note: "Gerçek WMS görev etiketi gelene kadar baseline",
+        },
         // Gerçek olay verisi bağlanana kadar model kalibre sayılmaz.
         calibrated: false,
         sampleSize: 0,
@@ -510,25 +525,10 @@ async function main() {
       await tx.moveDependency.createMany({ data: dependencies });
     }
 
-    // --- Veri kalitesi sorunları ------------------------------------------
-    await tx.dataQualityIssue.createMany({
-      data: QUALITY_ISSUES.map((issue) => ({
-        tenantId: TENANT_ID,
-        facilityId: facility.id,
-        code: issue.id,
-        priority: PRIORITY[issue.priority],
-        problem: issue.problem,
-        detail: issue.detail,
-        impact: issue.impact,
-        suggestedAction: issue.action,
-        owner: issue.owner,
-        affectedIds: issue.affectedIds,
-        affectedLabel: issue.affectedLabel,
-        // Ölçü verisi eksikse plan yayınlanamaz.
-        blocksPublish: issue.priority === "Kritik",
-        detectedAt: SNAPSHOT_AT,
-      })),
-    });
+    // --- Veri kalitesi ---------------------------------------------------
+    // Fixture sorunları kopyalanmaz; Faz 2 motoru gerçek kayıtları ölçer ve
+    // yayın kapısını aynı transaction içinde üretir.
+    await evaluateDataQuality(tx, TENANT_ID, facility.id);
   }, { timeout: 120_000 });
 
   const counts = await Promise.all([
@@ -537,11 +537,13 @@ async function main() {
     prisma.slotRecommendation.count({ where: { tenantId: TENANT_ID } }),
     prisma.moveTask.count({ where: { tenantId: TENANT_ID } }),
     prisma.moveDependency.count({ where: { tenantId: TENANT_ID } }),
+    prisma.graphNode.count({ where: { tenantId: TENANT_ID } }),
   ]);
 
   console.log(
     `Tamamlandı · ${counts[0]} lokasyon · ${counts[1]} SKU · ` +
-      `${counts[2]} öneri · ${counts[3]} taşıma görevi · ${counts[4]} bağımlılık`,
+      `${counts[2]} öneri · ${counts[3]} taşıma görevi · ${counts[4]} bağımlılık · ` +
+      `${counts[5]} graph node`,
   );
 }
 

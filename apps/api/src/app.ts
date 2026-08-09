@@ -4,8 +4,14 @@ import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import { config } from "./config.js";
 import { registerContext } from "./context.js";
+import { importRoutes } from "./routes/imports.js";
 import { layoutRoutes } from "./routes/layout.js";
+import { pickingRoutes } from "./routes/picking.js";
+import { optimizationRoutes } from "./routes/optimization.js";
+import { planRoutes } from "./routes/plans.js";
+import { twinRoutes } from "./routes/twin.js";
 import { prisma } from "./db.js";
+import { recoverOptimizationRuns } from "./optimizer/runner.js";
 
 /**
  * Uygulama fabrikası. Test ve sunucu aynı örneği kurar; böylece route
@@ -20,9 +26,6 @@ export async function buildApp(): Promise<FastifyInstance> {
           ? undefined
           : { target: "pino-pretty", options: { translateTime: "HH:MM:ss" } },
     },
-    // Correlation ID üretimi context.ts'te; Fastify'ın kendi requestId'si
-    // ile karışmasın diye kapalı tutuluyor.
-    disableRequestLogging: false,
   });
 
   await app.register(sensible);
@@ -41,6 +44,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(layoutRoutes, { prefix: "/api" });
+  await app.register(importRoutes, { prefix: "/api" });
+  await app.register(twinRoutes, { prefix: "/api" });
+  await app.register(pickingRoutes, { prefix: "/api" });
+  await app.register(optimizationRoutes, { prefix: "/api" });
+  await app.register(planRoutes, { prefix: "/api" });
+
+  app.addHook("onReady", async () => {
+    const recovered = await recoverOptimizationRuns();
+    if (recovered > 0) app.log.warn({ recovered }, "Kalıcı optimizer kuyruğu yeniden başlatıldı");
+  });
 
   app.setErrorHandler((error: unknown, request, reply) => {
     request.log.error({ err: error, correlationId: request.correlationId });

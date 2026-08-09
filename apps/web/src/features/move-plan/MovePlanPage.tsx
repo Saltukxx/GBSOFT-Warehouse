@@ -9,7 +9,8 @@ import { usePlanStore } from "../../app/planStore";
 import type { MoveTask } from "@gbsoft/domain";
 import type { ZoneId } from "@gbsoft/domain";
 import { PACKAGE_LABELS, taskSkuName } from "@gbsoft/seed";
-import { publishMoveTasks } from "../../data/api";
+import { fetchMoveTasks, publishMoveTasks } from "../../data/api";
+import { useAsync } from "../../lib/useAsync";
 import { hours, num, pct } from "../../lib/format";
 import "./moveplan.css";
 
@@ -18,7 +19,9 @@ type StatusOption = "all" | "hazır" | "bekliyor" | "yayınlandı";
 
 export function MovePlanPage() {
   const store = usePlanStore();
-  const { plan, moveTasks } = store;
+  const { plan } = store;
+  const taskState = useAsync((signal) => fetchMoveTasks(plan.id, signal), [plan.id]);
+  const moveTasks = taskState.status === "ready" ? taskState.data : store.moveTasks;
 
   const [zone, setZone] = useState<ZoneOption>("all");
   const [statusFilter, setStatusFilter] = useState<StatusOption>("all");
@@ -113,10 +116,13 @@ export function MovePlanPage() {
     );
     store.publish(selection.map((t) => t.id));
     setPublishedMessage(
-      `Demo modunda ${result.published} görev yayınlandı`,
+      result.mode === "demo"
+        ? `Demo modunda ${result.published} görev yayınlandı`
+        : `${result.published} görev idempotent biçimde yayınlandı`,
     );
     setChecked(new Set());
     setPublishing(false);
+    taskState.retry();
   }
 
   const columns: Array<Column<MoveTask>> = [
@@ -341,10 +347,7 @@ export function MovePlanPage() {
 
             {publishedMessage ? (
               <div style={{ marginTop: 10 }} aria-live="polite">
-                <Note tone="positive">
-                  {publishedMessage}. Bu demo gerçek bir WMS'e yazmaz; görevler
-                  yalnız arayüzde uygulandı olarak işaretlenir.
-                </Note>
+                <Note tone="positive">{publishedMessage}.</Note>
               </div>
             ) : null}
           </section>

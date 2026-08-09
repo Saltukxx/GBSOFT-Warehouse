@@ -1,7 +1,8 @@
 # Demodan ürüne: GBSoft Slotting & Picking Intelligence v1
 
 > **Yaşayan belge.** Her faz bittiğinde durum tablosu ve sapmalar bölümü
-> güncellenir. Son güncelleme: Faz 0 tamamlandı (08.08.2026).
+> güncellenir. Son güncelleme: Faz 5 tamamlandı — canlı move plan, idempotent
+> paket yayını, ölçüm kanıtı ve rollback lineage (09.08.2026).
 
 ## Neden
 
@@ -39,11 +40,12 @@ kurulur, kalibrasyonun kendisi ilk müşteriyle yapılır.
 | # | Paket | Çıkış koşulu | Durum |
 |---|---|---|---|
 | 0 | Monorepo, veritabanı, API iskeleti, `packages/domain`, layout ucu | `GET /facilities/:code/layout` gerçek DB'den 96 lokasyon döner, web onu çizer | **Tamam** |
-| 1 | Import şablonları, layout editörü, veri giriş ekranları | Golden dataset import edilir, satır bazlı doğrulama raporu üretir | Sırada |
-| 2 | Twin graph + mesafe matrisi + veri kalitesi motoru | Graph coverage %100; 96 lokasyonda mesafe matrisi <200 ms; kritik eksik yayını bloklar | Bekliyor |
-| 3 | Pick-time modeli + event ingest | Model sürümü/parametreleri API'den okunur; kalibre değilse UI açıkça söyler | Bekliyor |
-| 4 | CP-SAT slotting solver + async run servisi | 184 SKU / 96 lokasyonda <5 sn feasible; infeasible'da çakışan kısıtlar döner; OPTIMAL iddiası yok | Bekliyor |
-| 5 | Move plan, kısmi yayın, ölçüm, rollback | Kısmi onay paket bütünlüğünü korur; publish idempotent; rollback lineage'ı bozmaz | Bekliyor |
+| 1 | Import şablonları, veri giriş ekranı, kimlik eşlemesi | Golden dataset import edilir, satır bazlı doğrulama raporu üretir | **Tamam** |
+| 1b | 2B layout editörü | Yeni tesis geometrisi arayüzden tanımlanır ve kaydedilir | **Tamam** |
+| 2 | Twin graph + mesafe matrisi + veri kalitesi motoru | Graph coverage %100; 96 lokasyonda mesafe matrisi <200 ms; kritik eksik yayını bloklar | **Tamam** |
+| 3 | Pick-time modeli + event ingest | Model sürümü/parametreleri API'den okunur; kalibre değilse UI açıkça söyler | **Tamam** |
+| 4 | CP-SAT slotting solver + async run servisi | 184 SKU / 96 lokasyonda <5 sn feasible; infeasible'da çakışan kısıtlar döner; OPTIMAL iddiası yok | **Tamam** |
+| 5 | Move plan, kısmi yayın, ölçüm, rollback | Kısmi onay paket bütünlüğünü korur; publish idempotent; rollback lineage'ı bozmaz | **Tamam** |
 | 6 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Yetkisiz publish reddedilir; tüm plan değişiklikleri audit'te | Bekliyor |
 
 Her paket kendi başına gösterilebilir olmalı — demo satış aracı olarak çalışmaya
@@ -63,6 +65,183 @@ Doğrulandı: 96 lokasyon / 184 SKU / 38 wave / 2.840 order line veritabanından
 geliyor, tarayıcıda harita bu yanıttan çiziliyor; 26 vitest + 4 Playwright
 senaryosu geçiyor, konsol hatası yok.
 
+### Faz 1'de ne yapıldı
+
+- **CSV motoru** `@gbsoft/domain`'de: RFC 4180 ayrıştırıcı, ayraç tespiti
+  (`,` `;` sekme), BOM, tırnak içinde satır sonu; Türkçe Excel'in ondalık
+  virgülü ve `GG.AA.YYYY` tarihleri
+- **Altı şablon** tek yerde tanımlı: `layout`, `floor-area`, `sku`,
+  `velocity`, `wave`, `pick-task`. API doğrulamayı, arayüz hem kolon
+  dokümanını hem indirilebilir dosyayı aynı tanımdan üretir
+- **İki aşamalı akış:** yükleme varsayılan olarak kuru koşudur; yazma ayrı ve
+  açık bir komuttur (`dryRun=0`). İki aşama da aynı kontrollerden geçer
+- **Ret politikası tür bazlı:** geometri all-or-nothing (yarım ikiz, hiç
+  ikiz olmamasından kötüdür), kalanı kısmi ret
+- **`IdentityMap`**: kaynak sistem kimliği bir kez bağlanır, asla üzerine
+  yazılmaz; başka bir kanonik koda bağlanmak isteyen satır reddedilir
+- **Olay omurgası ilk kez besleniyor:** `pick-task` yüklemesi
+  `TASK_STARTED` / `TASK_COMPLETED` olayları yazar, `eventTime` ile
+  `ingestTime` ayrı tutulur — Faz 3'ün girdisi hazır
+- **Veri aktarımı ekranı** (`/system/imports`): şablon indir, doğrula, satır
+  bazlı raporu gör, uygula, geçmişi izle
+- **`npm run export:csv`**: golden dataset'i şablon biçiminde dışa aktarır;
+  yeni tesis kurarken iki satırlık örnek yerine dolu dosya görülür
+
+Doğrulandı: boş bir tesise sıfırdan yüklenen golden dataset 96 lokasyon ·
+184 SKU · 38 dalga / 2.840 sipariş satırı üretti — seed script'inin doğrudan
+yazdığı sayıların aynısı. Tek bozuk satır geometri dosyasının tamamını
+reddetti (422) ve yeni ikiz sürümü açılmadı; hız dosyasındaki bilinmeyen SKU
+satırı düşürüldü, kalanı yazıldı. 57 birim/entegrasyon testi ve 4 Playwright
+senaryosu geçiyor.
+
+### Faz 1b'de ne yapıldı
+
+**Layout editörü** (`/system/layout`): tesis geometrisi parametrik olarak
+tanımlanır — koridor sayısı, yüz başına göz, cross-aisle konumu, çizim
+ölçüleri, ölçek, dock alanı, koridor bazlı zon ataması ve göz sırasına göre
+raf profili (seviye, kapasite, ekipman, altın bölge). Harita üzerinde bir göz
+seçilip engel nedeniyle bloklanabilir.
+
+İki karar bu ekranın omurgası:
+
+- **Harita bileşenine dokunulmadı.** Faz 0'da `WarehouseMap` keyfi geometri
+  çizecek biçimde genelleştirilmişti; editör aynı bileşeni `layout` ve
+  `locations` prop'larıyla besliyor. Ayrı bir çizim katmanı yok.
+- **Editörün ayrı yazma yolu yok.** Taslak, elle doldurulmuş bir dosyayla
+  birebir aynı CSV satırlarına çevrilip aynı içe aktarma hattından geçiyor.
+  Doğrulama, all-or-nothing ret politikası, sürümleme ve `ImportBatch`
+  denetim izi tek yerde kalıyor; editörle dosya yükleme arasında davranış
+  farkı oluşamaz. Kaydetme iki adımdır: geometri (aktifleştirerek), sonra
+  raf dışı alanlar.
+
+Üretici `packages/domain/src/layoutBuilder.ts` içinde saf fonksiyondur.
+Varsayılan taslak Marmara DM geometrisini birebir üretiyor — aynı göz
+kodları, aynı ızgara, aynı dock referansı (150, 376) ve aynı mesafeler.
+Bu, editörün mevcut dijital ikizle tutarlı olduğunun regresyon testidir.
+
+Yeni bir tesiste ölçülmüş etkinlik verisi olmadığı için `picksPerDay`,
+`replenishmentsPerDay` ve `congestionScore` sıfırdır ve arayüz ısı
+katmanlarının düz olduğunu söyler. Bunları uydurmak, ölçülmemiş bir şeyi
+ölçülmüş göstermek olurdu.
+
+Doğrulandı: editörün ürettiği geometri boş bir tesise yazıldı, layout ucundan
+96 lokasyon, doğru viewBox/dock/ölçek ve engel nedeni korunmuş olarak geri
+geldi. Koridor sayısı değiştirildiğinde harita, zon tablosu ve sayaçlar
+birlikte güncelleniyor.
+
+**Kapsam dışı bırakıldı:** serbest sürükle-bırak geometri (düzensiz raf
+yerleşimi), göz bazlı kapasite override'ı ve mevcut bir sürümü açıp
+düzenleme. Editör bugün yeni sürüm üretir; var olanı yüklemez.
+
+### Faz 2'de ne yapıldı
+
+- **Kalıcı twin graph:** her `LayoutVersion`, dock/junction/location
+  `GraphNode` kayıtları ve iki yönlü `GraphEdge` kayıtları taşır. Bloklu gözün
+  erişim kenarı graf üzerinde kalır ama shortest-path hesabına girmez.
+- **Tek üretim yolu:** layout içe aktarımı grafı aynı transaction içinde
+  üretir; cross-aisle/floor-area değişince graf yeniden kurulur. Yarım layout
+  veya yarım graf kalıcı olamaz.
+- **Gerçek mesafe:** CSV'deki geçici Manhattan tahmini, graf üretildikten
+  sonra dock'tan Dijkstra shortest-path mesafesiyle değiştirilir.
+- **Mesafe matrisi:** `GET /api/facilities/:code/distance-matrix`, aktif ikizin
+  96×96 simetrik lokasyon matrisini döner. Saf domain regresyonu ve gerçek DB
+  entegrasyonunda hesap süresi 200 ms çıkış koşulunun altındadır.
+- **Graph görünürlüğü:** `GET /api/facilities/:code/graph`, kalıcı node/edge
+  kümesini ve coverage özetini verir. Golden dataset 96 göz için 181 node ve
+  %100 coverage üretir.
+- **Canlı veri kalitesi:** `/api/data-quality`, SKU fiziksel veri, lokasyon
+  kapasitesi, event completeness, graph coverage ve kaynak kimlik eşlemesini
+  gerçek snapshot'tan hesaplar. Arayüz artık bu ekran için fixture kullanmaz.
+- **Yayın kapısı:** eksik SKU ölçüsü, eksik kapasite veya bağlantısız graf
+  `DataQualityIssue.blocksPublish=true` üretir; yanıt hangi sorunların yayını
+  blokladığını açıkça taşır. Faz 5 publish komutu bu hazır kapıyı kullanacak.
+
+Doğrulandı: 76 birim/entegrasyon testi ve canlı API ile 4 Playwright senaryosu
+geçiyor; production build başarılı.
+
+### Faz 3'te ne yapıldı
+
+- **Canlı model API'si:** `GET /api/facilities/:code/pick-time-model`, aktif
+  sürümü, tesis parametrelerini, algoritmayı, eğitim penceresini, örnek sayısını,
+  P50 medyan hatayı ve P90 coverage'ı döndürür.
+- **Canlı Time Intelligence:** `GET /api/facilities/:code/picking-time`, aktif
+  modelden beklenen bileşen dağılımını ve varsa görev etiketlerinden
+  gerçekleşen P50/P90 dağılımını üretir. Arayüz bu ekran için artık fixture
+  kullanmaz.
+- **Feature/label hattı:** `TASK_STARTED/TASK_COMPLETED` çifti materialize
+  edilmiş `PickTask` üzerinden süre etiketi; graf mesafesi, mean-distance oranı,
+  congestion ve golden-zone feature'ları üretilir. Exception görevleri normal
+  süre modeline karıştırılmaz.
+- **Quantile eğitim işi:** `POST /api/facilities/:code/pick-time-model/calibrate`,
+  deterministik `quantile-irls-v1` ile ayrı P50/P90 katsayıları fit eder. Aynı
+  snapshot aynı parametreleri üretir.
+- **Dürüst eşik:** en az 200 uygun görev yoksa endpoint
+  `insufficient-data` döndürür, yeni model açmaz ve baseline aktif kalır.
+  Golden dataset'te gerçek görev olayı olmadığı için UI açıkça **Kalibre
+  değil · 0/200** gösterir; ölçülmüş kazanç iddiası yoktur.
+- **Sürümlü aktivasyon:** yeterli örnekte eski model pasifleşir, yeni model
+  sürümü parametre/algoritma/metrik/eğitim penceresiyle birlikte aktifleşir.
+
+Doğrulandı: yetersiz örnek ve 220+ görevli başarılı eğitim yolları gerçek
+PostgreSQL üzerinde geçiyor. Toplam 80 birim/entegrasyon testi, canlı API ile
+4 Playwright senaryosu ve backend'siz demo akışı doğrulandı.
+
+### Faz 4'te ne yapıldı
+
+- **Ayrı solver servisi:** `services/optimizer`, FastAPI ve OR-Tools CP-SAT
+  kullanır; yerel sanal ortamla veya Docker servisi olarak çalışır.
+- **Hard constraint modeli:** hacim/ağırlık kapasitesi, ekipman, zon, blokaj,
+  bir SKU/göz, kilit, freeze/fixed-slot ve move budget ceza olarak değil,
+  ihlal edilemez kural olarak modellenir.
+- **Deterministik warm start:** mevcut yerleşim başlangıç çözümüdür; sabit seed,
+  tek worker ve süre sınırı her `OptimizationRun` kaydında korunur.
+- **Dürüst çözüm kalitesi:** kanıtlanan optimum ayrı `solutionQuality=optimal`
+  alanında tutulur; zaman sınırında optimum iddia edilmez, gap raporlanır.
+- **Açıklanabilir infeasible:** CP-SAT assumption core, çakışan move budget,
+  minimum fayda, kilit ve freeze kurallarını kullanıcı dilinde neden ve
+  gevşetme seçeneğine dönüştürür.
+- **Kalıcı asenkron API:** `POST /api/optimization-runs` 202 + run ID döner,
+  `GET /api/optimization-runs/:id` queued/running/terminal durumu verir. Girdi
+  ve sonuç snapshot'ları, solver/model sürümü, süre, amaç değeri ve gap saklanır.
+- **Plan üretimi:** feasible sonuç yeni, lineage'lı `SlotPlan` sürümü ve taşınan
+  SKU'lar için `SlotRecommendation`/alternatif kayıtları üretir; solver sonucu
+  kendiliğinden WMS görevine dönüşmez.
+- **Canlı arayüz:** Slotting Studio modalı API'ye gönderir ve polling ile gerçek
+  sonucu gösterir; demo modu aynı sözleşmenin fixture adaptörünü korur.
+
+Doğrulandı: 184 SKU / 96 lokasyon altın snapshot'ında planlanan 90 SKU 5 saniye
+altında feasible; aynı seed deterministik, kilit/freeze/blockaj/kapasite ve
+infeasible core testleri geçiyor. Canlı Marmara snapshot'ı 78 aktif SKU için
+821 ms'de 0 hard ihlalle çözülüp 25 önerilik kalıcı plan üretti.
+
+### Faz 5'te ne yapıldı
+
+- **Gerçek move plan:** feasible solver atamaları plan sürümüne bağlı
+  `MoveTask` kayıtlarına ve bölünemez zon paketlerine dönüşür. Solver sonucu
+  açık yayın komutu gelmeden WMS durumu kazanmaz.
+- **Canlı plan uçları:** plan listesi/detayı, öneriler, alternatifler ve
+  move-task'lar PostgreSQL'den okunur; Move Plan ve Plan Geçmişi ekranları
+  demo modu dışında bu uçlara bağlandı.
+- **Sunucu tarafı paket bütünlüğü:** arayüz kontrolü atlatılsa bile paketin tek
+  görevi yayınlanamaz; eksik seçim HTTP 409 ile gerekçeli reddedilir.
+- **Idempotent kısmi yayın:** `idempotency-key` zorunludur. Aynı görev kümesi ve
+  anahtarın tekrarı çift yazım üretmez; plan `PARTIALLY_PUBLISHED` veya
+  `PUBLISHED` durumuna geçer.
+- **Veri kalitesi kapısı:** planın kullandığı SKU/lokasyon/graf için kritik
+  eksik varsa yayın durur. Plan dışında bırakılmış reserve SKU ölçüsü, güvenli
+  bir planın yayınını gereksiz yere engellemez.
+- **Rollback lineage:** kaynak ve hedef plan sürümleri korunur, işlem audit'e
+  yazılır; daha önce yayınlanmış görevler sessizce iptal edilmez.
+- **Dürüst ölçüm:** `PlanMeasurement`, beklenen etki ile gerçekleşen P50 farkını
+  ayrı saklar. Yayın öncesi ve sonrası en az 50'şer gerçek görev yoksa
+  `insufficient-data` döner ve actual kazanç yazılmaz.
+
+Doğrulandı: 9 görevlik Zone A paketi canlı API ile kısmi yayınlandı; aynı
+idempotency anahtarı tekrarında çift kayıt oluşmadı, tek görevle paket bölme
+409 döndü ve rollback sonrasında 9 yayınlanmış görev korunurken iki audit kaydı
+oluştu. Faz 5 entegrasyon testiyle toplam API testi 15'e çıktı; canlı ve demo
+Playwright akışları 4/4 geçiyor.
+
 ### Gerçekleşen sapmalar
 
 | Plan | Gerçekleşen | Neden |
@@ -73,6 +252,10 @@ senaryosu geçiyor, konsol hatası yok.
 | Kök `seed/` klasörü | `packages/seed` workspace paketi | Hem veritabanı seed'i hem arayüzün demo modu aynı paketi kullanabilsin diye |
 | `packages/contracts` (OpenAPI) | Ertelendi | Tipler `@gbsoft/domain` üzerinden zaten paylaşılıyor; OpenAPI dış entegrasyon gerektiğinde eklenecek |
 | Prisma şeması Faz 1'de | Faz 0'da yapıldı | Layout ucunun çıkış koşulu şemayı zaten gerektiriyordu |
+| Faz 1 tek parça | İkiye ayrıldı: veri girişi + layout editörü | Çıkış koşulunu (golden dataset import) veri girişi tek başına karşılıyor; editör ayrı ve büyük bir arayüz işi, ara doğrulama noktası kazanmak için ayrıldı |
+| CSV kütüphanesi | Kendi ayrıştırıcımız (`packages/domain/src/csv.ts`) | ~150 satır; karşılığında bağımlılık yok ve Türkçe Excel davranışı (noktalı virgül, ondalık virgül, BOM) baştan doğru. Aynı kod hem sunucuda hem tarayıcıda çalışıyor, demo modu bu sayede backend'siz doğruluyor |
+| `POST /imports/:kind` çok parçalı yükleme | Ham `text/csv` gövdesi veya JSON `{fileName, content}` | `@fastify/multipart` bağımlılığı gerekmedi; curl ve tarayıcı ikisi de doğal kullanıyor |
+| Sipariş satırı geçmişi tek şablon | `wave` + `pick-task` olarak ikiye ayrıldı | Şemada `OrderLine` tablosu yok; talep verisi `Wave.orderLines`, gerçekleşen iş `PickTask` üzerinde duruyor |
 
 ---
 
@@ -108,9 +291,9 @@ Tüm tablolar `tenantId` taşır; Faz 6'da Row Level Security eklenir.
 Kaynak: `apps/api/prisma/schema.prisma`.
 
 **Mekân:** `Facility`, `LayoutVersion`, `Zone`, `Aisle`, `RackFace`, `Location`,
-`FloorArea` — dijital ikiz sürümlenir; planlar hangi sürümde üretildiklerini
-saklar. Cross-aisle de bir `FloorArea`'dır.
-*(Faz 2'de eklenecek: `GraphNode`, `GraphEdge`.)*
+`FloorArea`, `GraphNode`, `GraphEdge` — dijital ikiz sürümlenir; planlar hangi
+sürümde üretildiklerini saklar. Cross-aisle de bir `FloorArea`'dır; graf bu
+alanları yatay rota omurgasına dönüştürür.
 
 **Ürün:** `Sku`, `SkuDimension` (ölçü kaynağı, ölçüm zamanı ve toleransıyla),
 `SkuAffinity`, `VelocitySnapshot`, `SkuPlacement` (geçerlilik aralıklı; taşıma
@@ -130,9 +313,9 @@ confidence, evidenceUri, correlationId`. `eventTime ≠ ingestTime` zorunlu.
 **Model:** `PickTimeModel` — sürüm, parametreler, `calibrated`, eğitim penceresi,
 örnek sayısı.
 
-**Yönetişim:** `ObjectiveProfile`, `DataQualityIssue`, `ImportBatch`,
+**Yönetişim:** `ObjectiveProfile`, `DataQualityIssue`, `ImportBatch`
+(durum, kuru koşu bayrağı ve satır bazlı rapor ile), `IdentityMap`,
 `AuditLog`, `User`, `Tenant`.
-*(Faz 1'de eklenecek: `IdentityMap`.)*
 
 ### Bilinçli kısıtlar
 
@@ -141,6 +324,9 @@ confidence, evidenceUri, correlationId`. `eventTime ≠ ingestTime` zorunlu.
 - `Event` üzerinde `(tenantId, source, sourceId, eventType)` benzersizdir: aynı
   kaynak olayı iki kez işlenemez.
 - `MoveTask.idempotencyKey`: WMS'e tekrar gönderimi engeller.
+- `IdentityMap` üzerinde `(tenantId, facilityId, entityType, sourceSystem,
+  sourceId)` benzersizdir ve `canonicalCode` **güncellenmez**: bir kez kurulan
+  kimlik eşlemesi değişmez, çakışan satır reddedilir.
 
 ---
 
@@ -151,17 +337,30 @@ confidence, evidenceUri, correlationId`. `eventTime ≠ ingestTime` zorunlu.
 ```
 GET  /health                            [var]
 GET  /api/facilities/:code/layout       FacilityLayout + locations   [var]
+GET  /api/facilities/:code/graph        kalıcı twin graph + coverage [var]
+GET  /api/facilities/:code/distance-matrix  96×96 shortest-path      [var]
 GET  /api/facilities/:code/overview     KPI, istisna kuyruğu, zone yükü, tamamlanma serisi
-GET  /api/facilities/:code/picking-time bileşen dağılımı + beklenen/gerçekleşen + model kalitesi
+GET  /api/facilities/:code/picking-time bileşen dağılımı + beklenen/gerçekleşen + model kalitesi [var]
+GET  /api/facilities/:code/pick-time-model aktif parametreler + kalibrasyon [var]
+POST /api/facilities/:code/pick-time-model/calibrate quantile eğitim işi [var]
 GET  /api/slot-plans, /api/slot-plans/:id   sürümler ve lineage
 POST /api/optimization-runs             async job → 202 + runId
 GET  /api/optimization-runs/:id         status | feasible | infeasible + gap
 POST /api/slot-plans/:id/locks | exclusions
 POST /api/slot-plans/:id/publish        ayrı yetki, idempotency-key zorunlu
 GET  /api/slot-plans/:id/move-tasks
-GET  /api/data-quality
-POST /api/imports/:kind                 CSV/Excel yükleme → doğrulama raporu
+GET  /api/data-quality                  coverage + yayın kapısı       [var]
+GET  /api/imports/templates             altı şablonun kolon tanımı        [var]
+GET  /api/imports/templates/:kind.csv   doldurulmaya hazır dosya          [var]
+POST /api/imports/:kind                 yükleme → satır bazlı rapor       [var]
+GET  /api/imports/batches               yükleme geçmişi                   [var]
+GET  /api/imports/batches/:id           saklanan rapor                    [var]
 ```
+
+İçe aktarma sözleşmesi: yükleme varsayılan olarak **kuru koşudur**
+(`?dryRun=0` ile yazılır). Kısmi ret bir başarıdır ve 200 döner — kabul
+edilen satırlar yazılmış, reddedilenler raporda durur; yalnız dosyanın
+tamamı reddedildiğinde 422 döner ve gövde yine tam rapordur.
 
 Kurallar (PDF §17): idempotency key; `sourceSystem`/`sourceId` asla üzerine
 yazılmaz; bulk import'ta partial reject + hata raporu, hatalı kayıt sessizce
@@ -197,7 +396,7 @@ döngü tespit eder (boş göz yoksa geçici staging görevi ekler), koridor kap
 penceresine göre paketler. Dört görev tipi (`VACATE/MOVE/VERIFY/OPEN`) ve paket
 bütünlüğü kuralı korunur.
 
-### Pick-time modeli · Faz 3
+### Pick-time modeli · Faz 3 [hazır]
 
 v1'de **parametreli analitik model**: `estimateLocationPickTimeSec()`.
 Parametreler (sabit bileşenler, ortalama travel, congestion katsayısı, ergonomi
@@ -205,7 +404,7 @@ cezası, P90 çarpanı) tesis bazlı, versiyonlu ve API'den okunur; koda gömül
 Travel bileşeni tesis ortalamasına normalize edilir, böylece lokasyon
 sürelerinin ortalaması tesis P50'siyle örtüşür.
 
-Event pipeline **kurulur ama kalibrasyon iddia edilmez**: `TASK_STARTED` /
+Event pipeline **kuruldu ama kalibrasyon iddia edilmez**: `TASK_STARTED` /
 `TASK_COMPLETED` çiftlerinden süre etiketleri, feature üretimi ve quantile
 regression eğitim işi yazılır; yeterli veri gelene kadar model
 `calibrated: false` döner ve arayüz bunu açıkça gösterir.
@@ -217,12 +416,12 @@ regression eğitim işi yazılır; yeterli veri gelene kadar model
 Tasarım sistemi, `WarehouseMap`, `DataTable`, karar rail'i, grafikler ve tüm
 ekran kompozisyonu **korunur**. Değişen dört şey:
 
-**1. Fixture bağımlılığını kes.** [Faz 0'da kısmen yapıldı]
+**1. Fixture bağımlılığını kes.** [Faz 0-1'de kısmen yapıldı]
 Harita ve ısı katmanları artık API'den beslenir; `WarehouseMap` bir
 `layout: FacilityLayout` prop'u alır, `layers.ts` skalayı yüklenen
-lokasyonlardan hesaplar. Kalan sayfalar (`operations`, `picking-time`,
-`move-plan`, `data-quality`) ve `planStore` ilgili uç canlıya bağlandıkça
-geçecek.
+lokasyonlardan hesaplar. Veri aktarımı ekranı da baştan canlıdır. Kalan
+sayfalar (`operations`, `move-plan`) ve
+`planStore` ilgili uç canlıya bağlandıkça geçecek.
 
 **2. Sunucu state'i.** [Faz 5] `src/lib/useAsync.ts` yerine TanStack Query:
 önbellek, dedupe, `OptimizationRun` için polling, optimistic lock/exclusion.
@@ -244,15 +443,22 @@ Ek: route bazlı code splitting, error boundary, `tr` varsayılan i18n katmanı.
 
 Konektör yerine kendi giriş yüzeyimiz:
 
-- **Import şablonları** (CSV/Excel): tesis geometrisi, lokasyon kapasitesi, SKU
-  master + ölçü/ağırlık, sipariş satırı geçmişi, görev olayları. Yükleme →
-  satır bazlı doğrulama raporu → partial reject; hatalı kayıt sessizce atılmaz.
-- **2B layout editörü** (basit sürüm): zone/koridor/raf yüzü/göz tanımlama,
-  cross-aisle ve dock konumu. Mevcut `WarehouseMap` düzenleme moduyla genişler.
+- **Import şablonları** (CSV) [hazır]: `layout` (geometri + göz kapasitesi),
+  `floor-area`, `sku` (master + ölçü/ağırlık), `velocity`, `wave`,
+  `pick-task`. Yükleme → satır bazlı doğrulama raporu → kısmi ret; hatalı
+  kayıt sessizce atılmaz, her reddedilen satır numarası, kolonu ve nedeniyle
+  raporda ve `ImportBatch` içinde saklanır.
+- **2B layout editörü** (`/system/layout`) [hazır]: zon/koridor/raf yüzü/göz
+  tanımlama, cross-aisle ve dock konumu, raf profili. Mevcut `WarehouseMap`
+  önizleme olarak kullanılır; çıktı içe aktarma hattından geçer.
 - **Golden dataset:** `packages/seed` — testlerin, demo modunun ve solver
-  regresyonunun ortak temeli. [hazır]
+  regresyonunun ortak temeli. `npm run export:csv` ile şablon biçiminde dışa
+  aktarılır; import hattının regresyon girdisi de budur. [hazır]
 - **Veri kalitesi kapısı:** `DataQualityIssue.blocksPublish`; kritik eksik (ölçü
   verisi yok) plan yayınını bloklar. Demodaki davranış gerçek kurala bağlanır.
+  [hazır] İçe aktarma ölçüsü eksik SKU'yu **uyarıyla** geçirir ve slot planı
+  kapsamı dışında kalacağını söyler; veri kalitesi motoru gerçek kaydı üretip
+  yayın kapısını kapatır.
 
 ---
 
@@ -285,6 +491,22 @@ npm run db:up && npm run db:migrate && npm run db:seed
 - `curl -s localhost:3001/api/facilities/MARMARA-DC-01/layout | jq '.locations | length'` → 96
 - Web'i aç, harita veritabanı verisiyle çizilsin
 - `.env` içinde `VITE_DEMO_MODE=1` ile fixture modu da çalışsın
+
+İçe aktarma hattı — boş bir tesise sıfırdan kurulum:
+
+```bash
+npm run export:csv --workspace @gbsoft/api -- ./seed-csv
+```
+
+```bash
+curl -s -X POST "localhost:3001/api/imports/layout?facility=MARMARA-DC-01&dryRun=0&activate=1&unitsPerMeter=7" \
+  -H 'content-type: text/csv' --data-binary @seed-csv/layout.csv | jq '{status, rowsAccepted, summary}'
+```
+
+- Sıra: `layout → floor-area → sku → velocity → wave`
+- Kuru koşu (`dryRun` varsayılan) hiçbir şey yazmaz ama parti kaydı bırakır
+- Geometri dosyasında tek bozuk satır → 422, sıfır yazma, yeni ikiz sürümü yok
+- Arayüzde `/system/imports`: şablon indir → doğrula → raporu gör → uygula
 
 **Faz 3-4**
 

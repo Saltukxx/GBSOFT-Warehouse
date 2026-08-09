@@ -54,6 +54,7 @@ const TAG_VARIANT: Record<string, string> = {
   kilitli: "info",
   sağlıklı: "ready",
   uyarı: "missing",
+  kritik: "blocked",
 };
 
 export function StatusTag({ status }: { status: string }) {

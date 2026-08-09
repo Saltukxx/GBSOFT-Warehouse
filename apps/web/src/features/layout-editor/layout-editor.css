@@ -1,0 +1,182 @@
+.editor {
+  display: grid;
+  grid-template-columns: minmax(230px, 280px) minmax(0, 1fr) minmax(210px, 260px);
+  gap: var(--space-4);
+  align-content: start;
+  align-items: start;
+}
+
+.editor__zoning,
+.editor__profiles {
+  grid-column: span 1;
+}
+
+.editor__zoning {
+  grid-column: 1 / 2;
+}
+
+.editor__profiles {
+  grid-column: 2 / -1;
+}
+
+.editor__report {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1279px) {
+  .editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor__zoning,
+  .editor__profiles,
+  .editor__report {
+    grid-column: 1 / -1;
+  }
+}
+
+/* --- Alanlar -------------------------------------------------------- */
+
+.editor__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.editor__field {
+  display: grid;
+  gap: 3px;
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+  min-width: 96px;
+  flex: 1 1 96px;
+}
+
+.editor__field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-900);
+  background: var(--surface-1);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.editor__field input:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: -1px;
+}
+
+.editor__field small {
+  color: var(--ink-500);
+  font-size: var(--text-2xs);
+}
+
+.editor__details {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--line-subtle);
+  padding-top: var(--space-3);
+}
+
+.editor__details summary {
+  font-size: var(--text-xs);
+  color: var(--ink-600);
+  cursor: pointer;
+  margin-bottom: var(--space-3);
+}
+
+/* --- Seçili göz ------------------------------------------------------ */
+
+.editor__inspector-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.editor__facts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.editor__facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.editor__facts dt {
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+.editor__facts dd {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-900);
+}
+
+/* --- Zon ataması ----------------------------------------------------- */
+
+.zoning,
+.profiles {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-xs);
+}
+
+.zoning__head,
+.zoning__row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.profiles__head,
+.profiles__row {
+  display: grid;
+  grid-template-columns: 44px 60px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 78px;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.zoning__head,
+.profiles__head {
+  color: var(--ink-500);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-subtle);
+  margin-bottom: 4px;
+}
+
+.zoning__row select,
+.profiles__row select,
+.profiles__row input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-900);
+  background: var(--surface-1);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.zoning__row select:focus-visible,
+.profiles__row select:focus-visible,
+.profiles__row input:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: -1px;
+}
+
+/* Uzun koridor listesinde panel taşmasın. */
+.editor__zoning .panel__body {
+  max-height: 420px;
+  overflow-y: auto;
+}

@@ -13,8 +13,10 @@ test("slotting demo golden path", async ({ page }) => {
     .click();
   await page.getByRole("link", { name: "Time Intelligence'ta aç" }).click();
 
-  await expect(page.getByText("71,4 sn/line")).toBeVisible();
-  await expect(page.getByText("94,2 sn/line")).toBeVisible();
+  await expect(page.getByText("Toplam P50")).toBeVisible();
+  await expect(page.getByText("P90", { exact: true })).toBeVisible();
+  await expect(page.getByText("Kalibre değil", { exact: true })).toBeVisible();
+  await expect(page.getByText("pick-time-1.4.2", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Slotting Studio'da aç" }).click();
   await page.getByTestId("location-B-11-04").click();
@@ -28,26 +30,26 @@ test("slotting demo golden path", async ({ page }) => {
   await page.getByRole("button", { name: "Yeniden optimize et" }).click();
   await page.getByRole("button", { name: "Planı çalıştır" }).click();
 
-  await expect(page.getByText("SP-2026-081-R1")).toBeVisible({
+  await expect(page.getByText(/SP-2026-081-R\d+/)).toBeVisible({
     timeout: 10_000,
   });
-  await expect(page.getByText("-7,2%")).toBeVisible();
+  await expect(page.getByText("Hard constraint ihlali")).toBeVisible();
 
   await page.getByRole("button", { name: "Sonucu plana uygula" }).click();
   await expect(
-    page.getByText("Plan SP-2026-081-R1", { exact: false }),
+    page.getByText(/Plan SP-2026-081-R\d+/),
   ).toBeVisible();
 
   await page.getByRole("link", { name: "Move Plan" }).first().click();
   await page.getByRole("checkbox", { name: "Zone A görevleri" }).check();
 
   await expect(
-    page.getByRole("button", { name: "11 görevi WMS'e yayınla" }),
+    page.getByRole("button", { name: /\d+ görevi WMS'e yayınla/ }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "11 görevi WMS'e yayınla" }).click();
+  await page.getByRole("button", { name: /\d+ görevi WMS'e yayınla/ }).click();
 
   await expect(
-    page.getByText("Demo modunda 11 görev yayınlandı"),
+    page.getByText(/(Demo modunda \d+ görev|\d+ görev idempotent biçimde) yayınlandı/),
   ).toBeVisible();
 });
 
@@ -56,7 +58,11 @@ test("veri kalitesi ve plan geçmişi hard refresh sonrası açılır", async ({
 }) => {
   await page.goto("/data-quality");
   await expect(page.getByRole("heading", { name: "Veri kalitesi" })).toBeVisible();
-  await expect(page.getByText("%94")).toBeVisible();
+  const graphCoverage = page
+    .locator(".coverage")
+    .filter({ hasText: "Graph coverage" });
+  await expect(graphCoverage.getByText("100%", { exact: true })).toBeVisible();
+  await expect(page.getByText("Plan bloklayan sorun")).toBeVisible();
 
   await page.goto("/optimization/history");
   await expect(
@@ -69,14 +75,14 @@ test("uygulanabilir plan bulunamadığında nedenler gösterilir", async ({
 }) => {
   await page.goto("/optimization/slotting");
   await page.getByRole("button", { name: "Yeniden optimize et" }).click();
-  await page.getByLabel("Move budget").fill("6");
+  await page.getByLabel("Move budget").fill("0");
   await page.getByRole("button", { name: "Planı çalıştır" }).click();
 
   await expect(
     page.getByText("Uygulanabilir plan bulunamadı"),
   ).toBeVisible({ timeout: 10_000 });
   await expect(
-    page.getByText("Zone A move budget yetersiz", { exact: false }),
+    page.getByText("move budget", { exact: false }).first(),
   ).toBeVisible();
 });
 
