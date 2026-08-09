@@ -97,6 +97,7 @@ model Facility {
   layoutVersions LayoutVersion[]
   skus           Sku[]
   waves          Wave[]
+  pickOrders     PickOrder[]
   slotPlans      SlotPlan[]
   events         Event[]
   qualityIssues  DataQualityIssue[]
@@ -378,6 +379,7 @@ model Sku {
   gtin         String?
 
   facility        Facility             @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  pickOrderLines  PickOrderLine[]
   dimension       SkuDimension?
   velocity        VelocitySnapshot[]
   placements      SkuPlacement[]
@@ -608,6 +610,13 @@ enum RunStatus {
   TIMEOUT
 }
 
+/// Solver çalıştırmasının türü. Yol haritasındaki PALLET ve TRUCK_LOAD
+/// ayrımının ilk adımı; eski slotting koşuları varsayılan olarak SLOT'tur.
+enum RunKind {
+  SLOT
+  PICK_TOUR
+}
+
 /// Her solver çağrısının değişmez kaydı: girdi snapshot'ı, kısıtlar, sürüm,
 /// seed ve sonuç kalitesi. Tekrar üretilebilirlik buna dayanır.
 model OptimizationRun {
@@ -615,6 +624,7 @@ model OptimizationRun {
   tenantId             String
   facilityId           String
   basePlanId           String?
+  kind                 RunKind   @default(SLOT)
   status               RunStatus @default(QUEUED)
   solverVersion        String
   modelVersion         String
@@ -648,6 +658,106 @@ model OptimizationRun {
   resultPlan SlotPlan?
 
   @@index([tenantId, facilityId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Yükleme siparişi ve toplama turu (Faz 6.5)
+// ---------------------------------------------------------------------------
+
+enum PickOrderStatus {
+  DRAFT
+  READY
+  PLANNED
+  RELEASED
+  CANCELLED
+}
+
+/// Bir sevkiyata toplanacak satırların kümesi.
+///
+/// `Wave` bir zaman penceresidir; bu ise bir yükleme işidir ve hangi dock
+/// kapısına toplanacağını bilir. Faz 7'de `Shipment` geldiğinde onun altına
+/// bağlanır.
+model PickOrder {
+  id         String          @id @default(cuid())
+  tenantId   String
+  facilityId String
+  /// İnsan tarafından kullanılan kod: PO-2026-0184
+  code       String
+  /// Toplanan yükün bırakılacağı alan (FloorArea.code). Boşsa dock referansı.
+  dockCode   String?
+  status     PickOrderStatus @default(READY)
+  priority   Int             @default(0)
+  dueAt      DateTime?
+  /// Plan hangi veri anlık görüntüsüyle üretildi.
+  snapshotAt DateTime?
+  createdAt  DateTime        @default(now())
+
+  facility Facility        @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  lines    PickOrderLine[]
+  tours    PickTour[]
+
+  @@unique([tenantId, facilityId, code])
+  @@index([tenantId, facilityId, status])
+}
+
+model PickOrderLine {
+  id       String @id @default(cuid())
+  tenantId String
+  orderId  String
+  lineNo   Int
+  skuId    String
+  quantity Int
+  uom      String @default("adet")
+
+  order PickOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// Plana girmiş bir SKU sessizce silinemez — SlotRecommendation ile aynı kural.
+  sku   Sku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, orderId, lineNo])
+  @@index([tenantId, orderId])
+}
+
+/// Solver'ın ürettiği tek bir toplama turu.
+model PickTour {
+  id       String @id @default(cuid())
+  tenantId String
+  orderId  String
+  /// Bu turu üreten çalıştırma; tekrar üretilebilirlik buna dayanır.
+  runId    String
+  seq      Int
+  /// manual | cart | forklift
+  equipment String
+  totalDistanceM Float
+  /// Modelin beklediği süre (sn). Ölçülmüş değil, tahmindir.
+  estimatedSec   Float
+  volumeUsedM3   Float @default(0)
+  weightUsedKg   Float @default(0)
+
+  order PickOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stops PickTourStop[]
+
+  @@unique([tenantId, orderId, runId, seq])
+  @@index([tenantId, orderId])
+}
+
+model PickTourStop {
+  id           String @id @default(cuid())
+  tenantId     String
+  tourId       String
+  seq          Int
+  locationCode String
+  skuCode      String
+  quantity     Int
+  /// Süre bileşenleri — `estimatePickTourSec` çıktısıyla birebir.
+  travelSec     Float
+  congestionSec Float @default(0)
+  pickSec       Float
+  cumulativeSec Float
+
+  tour PickTour @relation(fields: [tourId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, tourId, seq])
+  @@index([tenantId, tourId])
 }
 
 enum PlanState {

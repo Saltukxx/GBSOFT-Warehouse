@@ -8,6 +8,10 @@ import type {
   PickTimeCalibrationResult,
   PickTimeModelSnapshot,
   PickingTimeResponse,
+  PickOrderDetail,
+  PickOrderSummary,
+  PickTourOptimizeOptions,
+  PickTourPlan,
   RoutePlan,
   Scene3DResponse,
   CreateOptimizationRunResponse,
@@ -289,5 +293,85 @@ export async function rollbackSlotPlan(planId: string, targetPlanId: string) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ targetPlanId }),
     },
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Yükleme siparişleri ve toplama turları (Faz 6.5)                    */
+/* ------------------------------------------------------------------ */
+
+/* GET /api/pick-orders */
+export async function fetchPickOrders(
+  signal?: AbortSignal,
+): Promise<PickOrderSummary[]> {
+  const body = await request<{ orders: PickOrderSummary[] }>(
+    `/api/pick-orders?facility=${FACILITY_CODE}`,
+    { signal },
+  );
+  return body.orders;
+}
+
+/* GET /api/pick-orders/:id */
+export async function fetchPickOrder(
+  id: string,
+  signal?: AbortSignal,
+): Promise<PickOrderDetail> {
+  return request(`/api/pick-orders/${encodeURIComponent(id)}`, { signal });
+}
+
+/**
+ * POST /api/pick-orders/:id/optimize
+ *
+ * 202 + runId döner; sonuç `optimization-runs` üzerinden izlenir. Sipariş
+ * satırlarından tura giremeyenler `skippedLines` ile birlikte gelir —
+ * sessizce düşmezler.
+ */
+export async function optimizePickOrder(
+  id: string,
+  options: PickTourOptimizeOptions,
+): Promise<{ runId: string; skippedLines: PickTourPlan["skippedLines"] }> {
+  return request(`/api/pick-orders/${encodeURIComponent(id)}/optimize`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(options),
+  });
+}
+
+/* GET /api/pick-orders/:id/tours */
+export async function fetchPickTours(
+  id: string,
+  signal?: AbortSignal,
+): Promise<PickTourPlan> {
+  return request(`/api/pick-orders/${encodeURIComponent(id)}/tours`, { signal });
+}
+
+/* GET /api/pick-orders/:id/tours/:tourId/route */
+export async function fetchTourRoute(
+  orderId: string,
+  tourId: string,
+  signal?: AbortSignal,
+): Promise<RoutePlan> {
+  return request(
+    `/api/pick-orders/${encodeURIComponent(orderId)}/tours/${encodeURIComponent(tourId)}/route`,
+    { signal },
+  );
+}
+
+/** Çalıştırmanın terminal duruma gelmesini bekler. */
+export async function awaitOptimizationRun(
+  runId: string,
+  timeoutMs = 60_000,
+): Promise<OptimizationRunResponse> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 400));
+    const run = await request<OptimizationRunResponse>(
+      `/api/optimization-runs/${runId}`,
+    );
+    if (run.status !== "queued" && run.status !== "running") return run;
+  }
+  throw new ApiError(
+    "Optimizasyon sonucu bekleme süresini aştı.",
+    `/api/optimization-runs/${runId}`,
   );
 }

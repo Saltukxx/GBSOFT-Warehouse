@@ -8,6 +8,7 @@
 
 export * from "./warehouse.js";
 export * from "./picking.js";
+export * from "./pickTour.js";
 export * from "./slotting.js";
 export * from "./optimization.js";
 export * from "./csv.js";

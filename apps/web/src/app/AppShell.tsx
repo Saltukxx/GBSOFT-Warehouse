@@ -12,6 +12,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { to: "/operations", label: "Genel bakış", icon: "overview" },
       { to: "/operations/picking", label: "Picking Control", icon: "picking" },
+      { to: "/operations/pick-orders", label: "Yükleme siparişleri", icon: "moves" },
       { to: "/operations/exceptions", label: "İstisnalar", icon: "exception" },
     ],
   },

@@ -5,6 +5,7 @@ import { TimeIntelligencePage } from "../features/picking-time/TimeIntelligenceP
 import { SlottingStudioPage } from "../features/slotting/SlottingStudioPage";
 import { PlanHistoryPage } from "../features/slotting/PlanHistoryPage";
 import { MovePlanPage } from "../features/move-plan/MovePlanPage";
+import { PickOrdersPage } from "../features/pick-orders/PickOrdersPage";
 import { DataQualityPage } from "../features/data-quality/DataQualityPage";
 import { ImportsPage } from "../features/imports/ImportsPage";
 import { LayoutEditorPage } from "../features/layout-editor/LayoutEditorPage";
@@ -56,6 +57,7 @@ export const router = createBrowserRouter([
           />
         ),
       },
+      { path: "operations/pick-orders", element: <PickOrdersPage /> },
       { path: "twin/3d", element: <Twin3DPage /> },
       { path: "optimization/slotting", element: <SlottingStudioPage /> },
       {

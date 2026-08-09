@@ -7,6 +7,9 @@ import type {
   ImportTemplate,
   MoveTask,
   PickingTimeResponse,
+  PickOrderDetail,
+  PickOrderSummary,
+  PickTourPlan,
   RoutePlan,
   Scene3DResponse,
   SlotPlan,
@@ -231,6 +234,44 @@ export async function fetchRoute(
     LATENCY.layout,
     signal,
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Yükleme siparişleri — demo modunda kapsam dışı                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Toplama turu optimizasyonu gerçek solver'a ihtiyaç duyar; tarayıcıda
+ * çalıştırılamaz. Demo modu bunu uydurmak yerine açıkça söyler — sahte bir
+ * tur planı göstermek, ölçülmemiş bir şeyi ölçülmüş göstermenin başka biçimi
+ * olurdu.
+ */
+const TOURS_NEED_BACKEND =
+  "Toplama turu optimizasyonu Python solver'ına ihtiyaç duyar ve demo modunda çalışmaz. " +
+  "API ve optimizer servislerini başlatın.";
+
+export async function fetchPickOrders(signal?: AbortSignal) {
+  return delay([] as PickOrderSummary[], LATENCY.layout, signal);
+}
+
+export async function fetchPickOrder(): Promise<PickOrderDetail> {
+  throw new ApiError(TOURS_NEED_BACKEND, "/api/pick-orders/:id");
+}
+
+export async function optimizePickOrder(): Promise<never> {
+  throw new ApiError(TOURS_NEED_BACKEND, "/api/pick-orders/:id/optimize");
+}
+
+export async function fetchPickTours(): Promise<PickTourPlan> {
+  throw new ApiError(TOURS_NEED_BACKEND, "/api/pick-orders/:id/tours");
+}
+
+export async function fetchTourRoute(): Promise<RoutePlan> {
+  throw new ApiError(TOURS_NEED_BACKEND, "/api/pick-orders/:id/tours/:tid/route");
+}
+
+export async function awaitOptimizationRun(): Promise<never> {
+  throw new ApiError(TOURS_NEED_BACKEND, "/api/optimization-runs/:id");
 }
 
 /** SKU master'ı — demo modunda golden dataset'ten okunur. */

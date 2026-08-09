@@ -1,8 +1,9 @@
 # Demodan ürüne: GBSoft Slotting & Picking Intelligence v1
 
 > **Yaşayan belge.** Her faz bittiğinde durum tablosu ve sapmalar bölümü
-> güncellenir. Son güncelleme: Faz 5 tamamlandı — canlı move plan, idempotent
-> paket yayını, ölçüm kanıtı ve rollback lineage (09.08.2026).
+> güncellenir. Son güncelleme: Faz 6 ve 6.5 tamamlandı — 3B dijital ikiz, raf
+> sistemi, graf üzerinde rota replay, yükleme siparişi ve makespan hedefli
+> toplama turu optimizasyonu (09.08.2026).
 
 ## Neden
 
@@ -25,8 +26,10 @@ koymak.
 | Veri | Henüz müşteri yok → kendi veri giriş ekranları + import şablonları + golden dataset |
 | Dağıtım | Tek kiracı kurulum, ama şema/IAM baştan **tenant-scoped** |
 
-**Kapsam dışı (v1):** palletization, 3B araç yükleme, kamera/LiDAR doğrulama,
-Yard/Dock, Freight Audit, WMS konektörleri, çok kiracılı onboarding/faturalama.
+**Kapsam dışı (v1):** kamera/LiDAR doğrulama, Yard/Dock, Freight Audit, WMS
+konektörleri, çok kiracılı onboarding/faturalama. Palletization ve rota-duyarlı
+araç yükleme kapsama alındı ve Faz 7-8'e planlandı
+(`docs/WAREHOUSE_3D_TRUCK_LOADING_PLAN.md`).
 
 **Müşteri olmamasının sonucu — kalıcı kısıt:** tasarruf yüzdesi doğrulanamaz.
 Ürün hiçbir yerde ölçülmemiş kazanç iddia etmez; her sayı "tahmin", model sürümü
@@ -46,7 +49,11 @@ kurulur, kalibrasyonun kendisi ilk müşteriyle yapılır.
 | 3 | Pick-time modeli + event ingest | Model sürümü/parametreleri API'den okunur; kalibre değilse UI açıkça söyler | **Tamam** |
 | 4 | CP-SAT slotting solver + async run servisi | 184 SKU / 96 lokasyonda <5 sn feasible; infeasible'da çakışan kısıtlar döner; OPTIMAL iddiası yok | **Tamam** |
 | 5 | Move plan, kısmi yayın, ölçüm, rollback | Kısmi onay paket bütünlüğünü korur; publish idempotent; rollback lineage'ı bozmaz | **Tamam** |
-| 6 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Yetkisiz publish reddedilir; tüm plan değişiklikleri audit'te | Bekliyor |
+| 6 | 3B dijital ikiz, raf sistemi, rota replay | `scene-3d` 96 gözü metre biriminde döner; ölçülmemiş kot `derived` diye bildirilir; WebGL yoksa 2B'ye düşer | **Tamam** |
+| 6.5 | Yükleme siparişi ve toplama turu optimizasyonu | Sipariş kapasiteye göre turlara bölünür; makespan alt sınırla birlikte raporlanır; optimum iddia edilmez | **Tamam** |
+| 7 | Outbound modeli ve palletization | `Shipment`, `HandlingUnit`, `PalletPlan`; extreme-point packing | Bekliyor |
+| 8 | Rota-duyarlı truck loading ve execution | Araç şablonu, stop erişimi, precedence grafı, Load Studio | Bekliyor |
+| 9 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Yetkisiz publish reddedilir; tüm plan değişiklikleri audit'te | Bekliyor |
 
 Her paket kendi başına gösterilebilir olmalı — demo satış aracı olarak çalışmaya
 devam ederken ürün altında büyür.
@@ -242,6 +249,53 @@ idempotency anahtarı tekrarında çift kayıt oluşmadı, tek görevle paket b�
 oluştu. Faz 5 entegrasyon testiyle toplam API testi 15'e çıktı; canlı ve demo
 Playwright akışları 4/4 geçiyor.
 
+### Faz 6'da ne yapıldı
+
+- **Kanonik 3B sözleşme:** `packages/domain/src/scene3d.ts` 2B SVG birimini
+  metreye çevirir; `geometry3d.ts` ortak `Vec3`/`Box3D` ilkellerini taşır.
+  Ayak izi 2B haritayla birebir aynıdır — sahne yeni geometri uydurmaz.
+- **Raf sistemi** (`rack.ts`): dikme, ön/arka traverse rayı ve kademe
+  hücreleri. Raf kademe 1'den tepeye kadar süreklidir; golden dataset'te
+  24 raf yüzü × 4 göz × 3 kademe = 288 hücre, 96'sı pick yüzü.
+- **Tek yükleme yolu:** `twin/layout.ts` hem 2B hem 3B ucu besler. İki ayrı
+  sorgu zamanla iki farklı geometri anlamı doğururdu.
+- **Dürüst kot:** ölçülmüş raf yüksekliği olmayan tesiste düşey eksen
+  türetilir ve `geometrySource: "derived"` bildirilir. Kısmen ölçülmüş sahne
+  "ölçülmüş" sayılmaz.
+- **Rota grafı:** `shortestPathNodes` mesafeyle aynı Dijkstra'yı öncül kaydıyla
+  yürütür. `DOCK→A-01-01 = 25.033 m`, gözün `distanceToDockM` değeriyle aynı —
+  3B'de çizilen yol ile mesafe matrisi tek kaynaktan çıkar.
+- **Arayüz:** instanced gözler ve raf taşıyıcıları (480 draw call → 3),
+  `frameloop="demand"`, üç kamera açısı, kesit düzlemi, kademe/zon filtresi,
+  plan senaryosu katmanı, klavye gezinme, WebGL yoksa 2B fallback.
+
+### Faz 6.5'te ne yapıldı
+
+- **Yükleme siparişi:** `PickOrder`/`PickOrderLine`. `Wave` bir zaman
+  penceresidir; bu bir yükleme işidir ve dock kapısını bilir.
+- **Tur süre modeli** (`pickTour.ts`): ikinci bir model değil, mevcut modelin
+  genişletilmesi. Satır başına sabit bileşenler kalibre `PickTimeModel`'den
+  aynen alınır; duraklar arası travel graf mesafesinden gelir. `queueSec` tur
+  başına bir kez sayılır — aynı kalemi hem tur hem satır başına saymak süreyi
+  şişirirdi. Regresyon testi iki modelin ayrışmasını imkânsız kılıyor.
+- **CVRP solver** (`services/optimizer/picktour`): OR-Tools Routing, hacim ve
+  ağırlık iki ayrı dimension, hedef **makespan** (`SetGlobalSpanCostCoefficient`).
+  Toplam süreyi küçültmek tek toplayıcıya bütün işi yükleyen çözümleri
+  ödüllendirirdi.
+- **Determinizm çözüm sayısından gelir**, duvar saatinden değil; süre sınırına
+  takılırsa yanıt `stopped_by: time-limit` der ve tekrar üretilebilirlik iddia
+  edilmez.
+- **Optimum iddiası yok:** Routing kanıtlanmış optimum vermez. Yanıt `feasible`
+  döner ve makespan için gerçek bir alt sınır raporlar
+  (`max(Σ servis / araç, en uzak tek durak)`).
+- **`OptimizationRun.kind`** ayrımı başladı: `SLOT | PICK_TOUR`. Yol
+  haritasındaki `PALLET`/`TRUCK_LOAD` ayrımının ilk adımı.
+
+Doğrulandı: canlı Marmara ikizinde 14 satırlık sipariş 3 tura bölündü;
+makespan 11:43, toplam iş gücü 34:39, alt sınır 7:52 — turlar 11:25/11:31/11:43
+ile dengelenmiş. Tur mesafesi 309.494 m, aynı turun 3B güzergâhı 309.492 m.
+130 TypeScript testi (domain 75, API 29, web 26) ve 17 Python testi geçiyor.
+
 ### Gerçekleşen sapmalar
 
 | Plan | Gerçekleşen | Neden |
@@ -256,6 +310,9 @@ Playwright akışları 4/4 geçiyor.
 | CSV kütüphanesi | Kendi ayrıştırıcımız (`packages/domain/src/csv.ts`) | ~150 satır; karşılığında bağımlılık yok ve Türkçe Excel davranışı (noktalı virgül, ondalık virgül, BOM) baştan doğru. Aynı kod hem sunucuda hem tarayıcıda çalışıyor, demo modu bu sayede backend'siz doğruluyor |
 | `POST /imports/:kind` çok parçalı yükleme | Ham `text/csv` gövdesi veya JSON `{fileName, content}` | `@fastify/multipart` bağımlılığı gerekmedi; curl ve tarayıcı ikisi de doğal kullanıyor |
 | Sipariş satırı geçmişi tek şablon | `wave` + `pick-task` olarak ikiye ayrıldı | Şemada `OrderLine` tablosu yok; talep verisi `Wave.orderLines`, gerçekleşen iş `PickTask` üzerinde duruyor |
+| Faz 6 = IAM/RBAC | Faz 6 = 3B dijital ikiz; yönetişim Faz 9'a kaydı | `docs/WAREHOUSE_3D_TRUCK_LOADING_PLAN.md` yol haritasını genişletti; truck-load yayını Faz 9 bitene kadar shadow modda kalacak |
+| Raf hücreleri `StoragePosition` tablosunda | Sahne üretiminde türetiliyor, kalıcılaştırılmıyor | Görselleştirme ve kapasite görünürlüğü için yeterli. Faz 7-8'in "bu palet hangi gözde duruyor" sorusu için kalıcılık gerekecek; geometri üretimi `rack.ts` içinde saf fonksiyon olarak hazır |
+| Toplama turu CP-SAT ile | OR-Tools **Routing** ile | Kapasiteli çok araçlı turlama tam olarak routing kütüphanesinin problemi; CP-SAT'ta elle modellemek hem yavaş hem kırılgan olurdu. İkisi de aynı `ortools` paketinde |
 
 ---
 

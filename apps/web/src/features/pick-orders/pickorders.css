@@ -1,0 +1,140 @@
+/* Yükleme siparişleri ekranı — Faz 6.5. */
+
+.pickorders__body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 1080px) {
+  .pickorders__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pickorders__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* --- Sipariş listesi ------------------------------------------------ */
+
+.pickorders__orders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pickorders__order {
+  font: inherit;
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pickorders__order:hover {
+  background: var(--surface-1);
+}
+
+.pickorders__order[aria-current="true"] {
+  background: var(--blue-100);
+  border-color: var(--blue-600);
+}
+
+.pickorders__code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--ink-950);
+}
+
+/* --- Kontroller ------------------------------------------------------ */
+
+.pickorders__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.pickorders__control {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.pickorders__control input[type="number"] {
+  width: 72px;
+  padding: 5px 8px;
+  font: inherit;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+}
+
+/* --- Süre ayrışımı --------------------------------------------------- */
+
+.pickorders__split {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+}
+
+/* --- Durak sırası ---------------------------------------------------- */
+
+.pickorders__stops {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pickorders__stops li {
+  display: grid;
+  grid-template-columns: 24px 90px minmax(0, 1fr) 60px;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+.pickorders__stops li:nth-child(odd) {
+  background: var(--surface-1);
+}
+
+.pickorders__seq {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-500);
+}
+
+.pickorders__loc {
+  font-family: var(--font-mono);
+  color: var(--ink-950);
+}
+
+.pickorders__sku {
+  color: var(--ink-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickorders__time {
+  font-family: var(--font-mono);
+  color: var(--ink-600);
+  text-align: right;
+}

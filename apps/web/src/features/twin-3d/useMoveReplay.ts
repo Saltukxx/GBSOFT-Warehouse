@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MoveTask, PlanVersion, RoutePlan, Vec3 } from "@gbsoft/domain";
-import { fetchMoveTasks, fetchPlanVersions, fetchRoute } from "../../data/api";
+import { fetchMoveTasks, fetchPlanVersions, fetchRoute, fetchTourRoute } from "../../data/api";
 
 /**
  * Move-task rotalarının 3B replay'i (Faz 6.3).
@@ -53,6 +53,166 @@ function durationMs(distanceM: number): number {
  */
 function planLabelFor(plan: PlanVersion): string {
   return plan.id;
+}
+
+/**
+ * Toplama turu replay'i.
+ *
+ * `/twin/3d?tour=<id>&order=<code>` ile gelindiğinde plan görevleri yerine
+ * turun kendi güzergâhı oynatılır: kullanıcı sipariş ekranından "3B'de izle"
+ * dediğinde tam olarak solver'ın çözdüğü sırayı görür.
+ */
+export function useTourReplay(orderCode: string | null, tourId: string | null): ReplayState {
+  const [state, setState] = useState<{
+    status: ReplayState["status"];
+    error: Error | null;
+    steps: ReplayStep[];
+    unreachable: RoutePlan["unreachable"];
+  }>({ status: "idle", error: null, steps: [], unreachable: [] });
+  const [stepIndex, setStepIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [token, setToken] = useState(0);
+
+  useEffect(() => {
+    if (!orderCode || !tourId) return;
+    const controller = new AbortController();
+    let alive = true;
+
+    (async () => {
+      setState((previous) => ({ ...previous, status: "loading", error: null }));
+      try {
+        const route = await fetchTourRoute(orderCode, tourId, controller.signal);
+        if (!alive) return;
+        setState({
+          status: route.legs.length === 0 ? "empty" : "ready",
+          error: null,
+          unreachable: route.unreachable,
+          steps: route.legs.map((leg) => ({
+            taskCode: `${leg.fromCode}-${leg.toCode}`,
+            label:
+              leg.toCode === "DOCK"
+                ? "Dock'a dön"
+                : `${leg.toCode} gözünde topla`,
+            fromCode: leg.fromCode,
+            toCode: leg.toCode,
+            distanceM: leg.distanceM,
+            points: leg.points,
+          })),
+        });
+        setStepIndex(0);
+        setProgress(0);
+      } catch (cause) {
+        if (!alive) return;
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        setState({
+          status: "error",
+          error: cause instanceof Error ? cause : new Error(String(cause)),
+          steps: [],
+          unreachable: [],
+        });
+      }
+    })();
+
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [orderCode, tourId, token]);
+
+  usePlayback(playing, stepIndex, progress, state.steps, {
+    setStepIndex,
+    setProgress,
+    setPlaying,
+  });
+
+  const totalDistanceM =
+    Math.round(state.steps.reduce((sum, step) => sum + step.distanceM, 0) * 10) / 10;
+
+  return {
+    status: state.status,
+    error: state.error,
+    // Tur kimliği bir cuid'dir; kullanıcıya sipariş kodu daha anlamlı.
+    planLabel: orderCode,
+    steps: state.steps,
+    totalDistanceM,
+    unreachable: state.unreachable,
+    stepIndex,
+    progress,
+    playing,
+    play: () => setPlaying(true),
+    pause: () => setPlaying(false),
+    reset: () => {
+      setPlaying(false);
+      setStepIndex(0);
+      setProgress(0);
+    },
+    setStepIndex: (index: number) => {
+      setPlaying(false);
+      setStepIndex(index);
+      setProgress(0);
+    },
+    setProgress,
+    load: () => setToken((value) => value + 1),
+  };
+}
+
+/**
+ * Oynatma döngüsü — iki replay kaynağı da aynı zamanlamayı kullanır.
+ *
+ * `progress` bilerek bağımlılık listesinde değildir: her karede efekt yeniden
+ * kurulursa animasyon takılır.
+ */
+function usePlayback(
+  playing: boolean,
+  stepIndex: number,
+  progress: number,
+  steps: ReplayStep[],
+  actions: {
+    setStepIndex: (updater: (index: number) => number) => void;
+    setProgress: (value: number) => void;
+    setPlaying: (value: boolean) => void;
+  },
+) {
+  const frameRef = useRef<number | null>(null);
+  const startedRef = useRef<{ time: number; from: number } | null>(null);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+
+  useEffect(() => {
+    if (!playing || steps.length === 0) return;
+
+    const step = steps[Math.min(stepIndex, steps.length - 1)];
+    const total = durationMs(step.distanceM);
+    startedRef.current = { time: performance.now(), from: progressRef.current };
+
+    const tick = () => {
+      const started = startedRef.current;
+      if (!started) return;
+      const next = started.from + (performance.now() - started.time) / total;
+
+      if (next >= 1) {
+        if (stepIndex >= steps.length - 1) {
+          actions.setProgress(1);
+          actions.setPlaying(false);
+          return;
+        }
+        actions.setStepIndex((index) => index + 1);
+        actions.setProgress(0);
+        return;
+      }
+
+      actions.setProgress(next);
+      frameRef.current = requestAnimationFrame(tick);
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, stepIndex, steps]);
 }
 
 export function useMoveReplay(): ReplayState {

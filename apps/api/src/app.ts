@@ -8,6 +8,7 @@ import { importRoutes } from "./routes/imports.js";
 import { layoutRoutes } from "./routes/layout.js";
 import { pickingRoutes } from "./routes/picking.js";
 import { optimizationRoutes } from "./routes/optimization.js";
+import { pickOrderRoutes } from "./routes/pickOrders.js";
 import { planRoutes } from "./routes/plans.js";
 import { twinRoutes } from "./routes/twin.js";
 import { prisma } from "./db.js";
@@ -48,6 +49,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(twinRoutes, { prefix: "/api" });
   await app.register(pickingRoutes, { prefix: "/api" });
   await app.register(optimizationRoutes, { prefix: "/api" });
+  await app.register(pickOrderRoutes, { prefix: "/api" });
   await app.register(planRoutes, { prefix: "/api" });
 
   app.addHook("onReady", async () => {

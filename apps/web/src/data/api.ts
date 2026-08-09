@@ -23,6 +23,8 @@ export const LIVE_ENDPOINTS = [
   "layout",
   "scene-3d",
   "routes",
+  "pick-orders",
+  "pick-tours",
   "imports",
   "data-quality",
   "picking-time",
@@ -44,6 +46,18 @@ export const FIXTURE_ENDPOINTS = [
 export const fetchLayout = DEMO_MODE ? demo.fetchLayout : http.fetchLayout;
 export const fetchScene3D = DEMO_MODE ? demo.fetchScene3D : http.fetchScene3D;
 export const fetchRoute = DEMO_MODE ? demo.fetchRoute : http.fetchRoute;
+
+/* Yükleme siparişleri ve toplama turları (Faz 6.5) — canlı backend gerektirir. */
+export const fetchPickOrders = DEMO_MODE ? demo.fetchPickOrders : http.fetchPickOrders;
+export const fetchPickOrder = DEMO_MODE ? demo.fetchPickOrder : http.fetchPickOrder;
+export const optimizePickOrder = DEMO_MODE
+  ? demo.optimizePickOrder
+  : http.optimizePickOrder;
+export const fetchPickTours = DEMO_MODE ? demo.fetchPickTours : http.fetchPickTours;
+export const fetchTourRoute = DEMO_MODE ? demo.fetchTourRoute : http.fetchTourRoute;
+export const awaitOptimizationRun = DEMO_MODE
+  ? demo.awaitOptimizationRun
+  : http.awaitOptimizationRun;
 
 // Veri girişi. Demo modunda doğrulama tarayıcıda gerçekten çalışır — aynı
 // @gbsoft/domain motoru — ama yazma yapılmaz ve arayüz bunu söyler.

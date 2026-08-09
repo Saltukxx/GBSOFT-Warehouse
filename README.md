@@ -3,9 +3,10 @@
 WMS üstü çalışan karar ve kanıt katmanı. Bu depo, sunum demosundan gerçek ürüne
 geçişi barındırır.
 
-**Kapsam (v1):** Foundation, dijital ikiz, dynamic slotting, picking analitiği,
-yönetişim. Palletization, 3B araç yükleme, kamera/LiDAR doğrulama, Yard/Dock ve
-Freight Audit sonraki sürümlerdedir.
+**Kapsam (v1):** Foundation, dijital ikiz (2B + **3B**), dynamic slotting,
+picking analitiği, **yükleme siparişi ve toplama turu optimizasyonu**, yönetişim.
+Palletization ve rota-duyarlı araç yükleme Faz 7-8'de; kamera/LiDAR doğrulama,
+Yard/Dock ve Freight Audit sonraki sürümlerdedir.
 
 > Veriler kurgusal bir tesise (Marmara Dağıtım Merkezi) aittir. Gerçek müşteri
 > verisi bağlanana kadar plan KPI'ları **tahmin**dir; ölçülmüş kazanç değildir.
@@ -105,24 +106,66 @@ portunu kullanır; 5432/5433 başka projeler tarafından kullanıldığı için 
 | 3 | Pick-time modeli, event ingest, kalibrasyon | **Tamam** |
 | 4 | CP-SAT slotting solver (Python + OR-Tools) | **Tamam** |
 | 5 | Move plan, kısmi yayın, ölçüm, rollback | **Tamam** |
-| 6 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Bekliyor |
+| 6 | 3B dijital ikiz, raf sistemi, rota replay | **Tamam** |
+| 6.5 | Yükleme siparişi, toplama turu optimizasyonu (CVRP) | **Tamam** |
+| 7 | Outbound modeli ve palletization | Bekliyor |
+| 8 | Rota-duyarlı truck loading ve execution | Bekliyor |
+| 9 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Bekliyor |
 
 ### Hangi uç canlı?
 
 `apps/web/src/data/api.ts` içindeki `LIVE_ENDPOINTS` ve `FIXTURE_ENDPOINTS`
 listeleri, ürünün gerçekte ne kadarının canlı olduğunu tek bakışta gösterir.
-Şu an **layout**, **veri aktarımı**, **veri kalitesi**, **pick-time/model**,
-**asenkron yeniden optimizasyon**, **slot planları**, **move-task yayını** ve
-**rollback** uçları veritabanıyla konuşur; yalnız operasyon özeti golden
-dataset'ten gelir. Aktif ikizin
-kalıcı grafı ve 96×96 mesafe matrisi de API'den okunabilir:
+Şu an **layout**, **3B sahne**, **rota**, **yükleme siparişleri**, **toplama
+turları**, **veri aktarımı**, **veri kalitesi**, **pick-time/model**, **asenkron
+yeniden optimizasyon**, **slot planları**, **move-task yayını** ve **rollback**
+uçları veritabanıyla konuşur; yalnız operasyon özeti golden dataset'ten gelir.
+Aktif ikizin kalıcı grafı ve 96×96 mesafe matrisi de API'den okunabilir:
 
 ```bash
 curl -s localhost:3001/api/facilities/MARMARA-DC-01/graph
 curl -s localhost:3001/api/facilities/MARMARA-DC-01/distance-matrix
 curl -s localhost:3001/api/facilities/MARMARA-DC-01/pick-time-model
 curl -s localhost:3001/api/facilities/MARMARA-DC-01/picking-time
+curl -s localhost:3001/api/facilities/MARMARA-DC-01/scene-3d
+curl -s "localhost:3001/api/facilities/MARMARA-DC-01/routes?stops=DOCK,A-01-01,B-03-02,DOCK"
 ```
+
+### 3B dijital ikiz
+
+`/twin/3d` aktif ikizin üç boyutlu görünümüdür. Geometri `scene-3d` ucundan
+gelir ve **kanonik birim metredir**; ayak izi 2B haritayla birebir aynıdır.
+Raf sistemi dikme, traverse ve kademe hücreleriyle çizilir: golden dataset'te
+24 raf yüzü, 288 hücre (96 pick yüzü + 192 reserve).
+
+Ölçülmüş raf kotu olmayan tesiste düşey eksen varsayılan profilden **türetilir**
+ve yanıt `geometrySource: "derived"` der; arayüz bunu üstte açıkça yazar.
+Ölçülmüş kot için layout şablonundaki `levelElevationM`, `levelClearHeightM` ve
+`depthM` kolonları doldurulur.
+
+WebGL yoksa ekran boş kalmaz; aynı katmanlarla mevcut 2B harita çizilir.
+
+### Yükleme siparişi ve toplama turu
+
+`/operations/pick-orders` bir yükleme siparişini en hızlı toplayacak tur
+sırasını üretir. Solver OR-Tools Routing ile kapasiteli araç rotalama çözer;
+hedef **makespan**tir — toplayıcılar paralel çalıştığı için sipariş en geç biten
+tur bitince hazırdır.
+
+```bash
+curl -s -X POST localhost:3001/api/pick-orders -H 'content-type: application/json' \
+  -d '{"facility":"MARMARA-DC-01","code":"PO-001","dockCode":"DOCK-1","lines":[{"skuCode":"SKU-001","quantity":2}]}'
+```
+
+```bash
+curl -s -X POST localhost:3001/api/pick-orders/PO-001/optimize -H 'content-type: application/json' \
+  -d '{"equipment":"cart","vehicleCount":3,"objective":"makespan"}'
+```
+
+Süre modeli ikinci bir model değildir: satır başına sabit bileşenler kalibre
+`PickTimeModel`'den aynen alınır, duraklar arası travel Faz 2'nin graf
+mesafesinden gelir. Routing kanıtlanmış optimum vermez — yanıt hiçbir koşulda
+`optimal` demez, `feasible` ve bir **alt sınır** raporlar.
 
 Slotting Studio'daki yeniden optimizasyon canlıdır: `POST /api/optimization-runs`
 202 + `runId` döner; arayüz `GET /api/optimization-runs/:id` ile sonucu izler.
@@ -184,7 +227,7 @@ Kurallar:
 ## Kararlar
 
 - **Kiracı:** kurulum tek kiracıdır, ancak her tablo `tenantId` taşır. Çok
-  kiracılıya geçiş migration gerektirmez; Faz 6'da RLS eklenir.
+  kiracılıya geçiş migration gerektirmez; Faz 9'da RLS eklenir.
 - **Kimlik:** kaynak sistem kimliği (`sourceSystem` + `sourceId`) asla üzerine
   yazılmaz; kanonik kod ayrı alandır.
 - **Zaman:** `eventTime` ile `ingestTime` ayrıdır. Geç gelen olay doğru

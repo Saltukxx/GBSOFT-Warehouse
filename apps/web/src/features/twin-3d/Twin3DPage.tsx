@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { BayVolume, Scene3DResponse, ZoneId } from "@gbsoft/domain";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Note, Panel, Segmented } from "../../components/ui/primitives";
@@ -16,7 +17,7 @@ import { detectWebgl } from "../../components/warehouse-3d/webgl";
 import { useLayout, type LayoutState } from "../../data/useLayout";
 import { fetchScene3D, DEMO_MODE } from "../../data/api";
 import { useAsync } from "../../lib/useAsync";
-import { useMoveReplay } from "./useMoveReplay";
+import { useMoveReplay, useTourReplay } from "./useMoveReplay";
 import { usePlanRoles } from "./usePlanRoles";
 import "./twin3d.css";
 
@@ -109,7 +110,15 @@ export function Twin3DPage() {
     layerId === "zone" ? "zone" : layerId === "plan" ? "plan" : "layer";
 
   const planRoles = usePlanRoles(layerId === "plan");
-  const replay = useMoveReplay();
+
+  // `/twin/3d?tour=<id>&order=<code>` ile gelindiyse plan görevleri değil,
+  // toplama turunun kendi güzergâhı oynatılır.
+  const [searchParams] = useSearchParams();
+  const tourId = searchParams.get("tour");
+  const orderCode = searchParams.get("order");
+  const moveReplay = useMoveReplay();
+  const tourReplay = useTourReplay(orderCode, tourId);
+  const replay = tourId && orderCode ? tourReplay : moveReplay;
 
   const levels = useMemo(
     () => [...new Set(scene?.bays.map((bay) => bay.level) ?? [])].sort((a, b) => a - b),
