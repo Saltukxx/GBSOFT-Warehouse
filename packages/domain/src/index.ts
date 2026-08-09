@@ -17,5 +17,7 @@ export * from "./layoutBuilder.js";
 export * from "./twinGraph.js";
 export * from "./geometry3d.js";
 export * from "./rack.js";
+export * from "./packaging.js";
+export * from "./palletize.js";
 export * from "./scene3d.js";
 export * from "./quality.js";

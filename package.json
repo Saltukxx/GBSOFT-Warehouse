@@ -25,7 +25,8 @@
     "db:psql": "docker compose exec db psql -U gbsoft -d gbsoft",
     "db:migrate": "npm run db:migrate --workspace @gbsoft/api",
     "db:seed": "npm run db:seed --workspace @gbsoft/api",
-    "db:reset": "npm run db:reset --workspace @gbsoft/api"
+    "db:reset": "npm run db:reset --workspace @gbsoft/api",
+    "crossvalidate:pallet": "tsx apps/api/scripts/crossvalidate-pallet.mts"
   },
   "engines": {
     "node": ">=22"

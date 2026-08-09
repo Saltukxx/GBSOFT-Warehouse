@@ -84,6 +84,7 @@ regresyon testleri. Böylece demo ile ürün asla farklı sayı göstermez.
 | `npm run build` | Tüm workspace'leri derler (strict TypeScript) |
 | `npm test` | Birim ve veri tutarlılık testleri |
 | `npm run test:optimizer` | Solver hard constraint ve altın veri testleri |
+| `npm run crossvalidate:pallet` | Palet çözücüsünün çıktısını bağımsız doğrulayıcıdan geçirir |
 | `npm run test:e2e` | Playwright ana demo akışı |
 | `npm run db:up` / `db:down` | Veritabanı konteyneri |
 | `npm run services:up` | Veritabanı + optimizer konteynerleri |
@@ -108,7 +109,8 @@ portunu kullanır; 5432/5433 başka projeler tarafından kullanıldığı için 
 | 5 | Move plan, kısmi yayın, ölçüm, rollback | **Tamam** |
 | 6 | 3B dijital ikiz, raf sistemi, rota replay | **Tamam** |
 | 6.5 | Yükleme siparişi, toplama turu optimizasyonu (CVRP) | **Tamam** |
-| 7 | Outbound modeli ve palletization | Bekliyor |
+| 7.1 | Paket profilleri ve bağımsız palet doğrulayıcı | **Tamam** |
+| 7.2 | Outbound veri modeli, palet API'si ve 3B palet görünümü | Devam ediyor |
 | 8 | Rota-duyarlı truck loading ve execution | Bekliyor |
 | 9 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Bekliyor |
 
@@ -223,6 +225,30 @@ Kurallar:
   virgül, `GG.AA.YYYY` tarih ve BOM.
 - Golden dataset'i dolu örnek dosya olarak almak için:
   `npm run export:csv --workspace @gbsoft/api -- ./seed-csv`
+
+### Palletization ve bağımsız doğrulayıcı
+
+Palet planı iki ayrı yerde ele alınır ve bu bilinçlidir:
+
+- **Çözücü** (`services/optimizer/pallet`) extreme-point sezgiseliyle kutuları
+  yerleştirir. Kısıtları yerleştirme sırasında uygular ve kanıtlanmış optimum
+  iddia etmez.
+- **Doğrulayıcı** (`packages/domain/src/palletize.ts`) çözücünün hiçbir iç
+  yapısını bilmez. Elinde yalnız yerleştirilmiş kutular ve paket profilleri
+  vardır; çakışma, sınır, destek oranı, üst yük zinciri, istiflenebilirlik,
+  kırılganlık, ayrım, sıcaklık, ağırlık merkezi ve yerleştirme sırasını
+  sıfırdan hesaplar.
+
+Bir çözücü kendi çözümünü kendi kısıtlarıyla onaylarsa, kısıtı yanlış
+modellediği yerde iki kez yanılır. İkisinin ayrı yazılması bunu engeller —
+nitekim ilk çapraz koşuda çözücünün ağırlık merkezini hiç dikkate almadığı
+böyle ortaya çıktı.
+
+```bash
+npm run crossvalidate:pallet
+```
+
+**Plan doğrulayıcıdan geçmeden yayınlanamaz.**
 
 ## Kararlar
 
