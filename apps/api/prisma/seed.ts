@@ -13,6 +13,7 @@ import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import type { EquipmentClass, HandlingClass, Prisma, RackSide } from "@prisma/client";
 import {
+  DEFAULT_PACKAGE_TYPES,
   DEFAULT_PICK_TIME_PARAMETERS,
   PROFILE_PRESETS,
   type ObjectiveProfile,
@@ -111,6 +112,11 @@ async function main() {
       await tx.skuPlacement.deleteMany({
         where: { ...scope, sku: { facilityId: existing.id } },
       });
+      // Outbound tarafı (Faz 6.5 ve 7): satırlar SKU'ya `Restrict` ile
+      // bağlıdır — plana girmiş bir SKU sessizce silinemez. Bu yüzden
+      // sevkiyat ve yükleme siparişleri tesisten önce temizlenir.
+      await tx.pickOrder.deleteMany({ where: { ...scope, facilityId: existing.id } });
+      await tx.shipment.deleteMany({ where: { ...scope, facilityId: existing.id } });
       await tx.objectiveProfile.deleteMany({ where: scope });
       await tx.facility.delete({ where: { id: existing.id } });
     }
@@ -397,6 +403,34 @@ async function main() {
         isActive: true,
       },
     });
+
+    // --- Paket profilleri (Faz 7) -----------------------------------------
+    // Ölçüler saha varsayılanıdır ve **ölçülmemiştir**; gerçek tesiste
+    // `package-type` verisiyle değiştirilir.
+    for (const type of DEFAULT_PACKAGE_TYPES) {
+      await tx.packageType.upsert({
+        where: { tenantId_code: { tenantId: TENANT_ID, code: type.code } },
+        update: {},
+        create: {
+          tenantId: TENANT_ID,
+          code: type.code,
+          name: type.name,
+          shape: type.shape,
+          lengthM: type.lengthM,
+          widthM: type.widthM,
+          heightM: type.heightM,
+          tareKg: type.tareKg,
+          rotation: type.rotation,
+          maxTopLoadKg: type.maxTopLoadKg,
+          minSupportRatio: type.minSupportRatio,
+          stackable: type.stackable,
+          fragile: type.fragile,
+          compressionTolerancePct: type.compressionTolerancePct,
+          temperatureClass: type.temperatureClass,
+          segregationGroup: type.segregationGroup ?? null,
+        },
+      });
+    }
 
     // --- Amaç profilleri -------------------------------------------------
     const profileIdByKey = new Map<string, string>();

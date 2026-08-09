@@ -257,3 +257,97 @@ export function allowedFootprints(type: PackageType): Footprint[] {
     return true;
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* API sözleşmesi — sevkiyat ve palet planı                            */
+/* ------------------------------------------------------------------ */
+
+export type ShipmentStatus =
+  | "draft"
+  | "ready"
+  | "planned"
+  | "loaded"
+  | "dispatched"
+  | "cancelled";
+
+export type ShipmentSummary = {
+  id: string;
+  code: string;
+  carrierCode: string | null;
+  status: ShipmentStatus;
+  plannedDepartureAt: string | null;
+  stopCount: number;
+  lineCount: number;
+  unitCount: number;
+  palletCount: number;
+  createdAt: string;
+};
+
+export type ShipmentStopView = {
+  seq: number;
+  code: string;
+  name: string;
+  address: string | null;
+};
+
+export type ShipmentLineView = {
+  lineNo: number;
+  stopCode: string;
+  skuCode: string;
+  skuName: string;
+  packageTypeCode: string;
+  packageTypeName: string;
+  quantity: number;
+};
+
+export type ShipmentDetail = ShipmentSummary & {
+  facilityCode: string;
+  stops: ShipmentStopView[];
+  lines: ShipmentLineView[];
+};
+
+export type PalletPlacementView = {
+  huCode: string;
+  packageTypeCode: string;
+  skuCode: string | null;
+  stopCode: string | null;
+  x: number;
+  y: number;
+  z: number;
+  lengthM: number;
+  widthM: number;
+  heightM: number;
+  grossWeightKg: number;
+  layer: number;
+  seq: number;
+};
+
+/**
+ * Tek bir paletin planı.
+ *
+ * `state` bağımsız doğrulayıcının kararıdır: `rejected` bir plan
+ * yayınlanamaz ve `violations` neden reddedildiğini söyler.
+ */
+export type PalletPlanView = {
+  id: string;
+  code: string;
+  seq: number;
+  runId: string;
+  state: "draft" | "validated" | "rejected" | "published";
+  base: {
+    packageTypeCode: string;
+    packageTypeName: string;
+    lengthM: number;
+    widthM: number;
+    deckHeightM: number;
+    maxHeightM: number;
+    maxWeightKg: number;
+  };
+  usedHeightM: number;
+  usedWeightKg: number;
+  volumeUtilizationPct: number;
+  footprintUtilizationPct: number;
+  centerOfGravity: { x: number; y: number; z: number };
+  violations: Array<{ code: string; huCodes: string[]; message: string }>;
+  placements: PalletPlacementView[];
+};

@@ -98,6 +98,7 @@ model Facility {
   skus           Sku[]
   waves          Wave[]
   pickOrders     PickOrder[]
+  shipments      Shipment[]
   slotPlans      SlotPlan[]
   events         Event[]
   qualityIssues  DataQualityIssue[]
@@ -380,6 +381,8 @@ model Sku {
 
   facility        Facility             @relation(fields: [facilityId], references: [id], onDelete: Cascade)
   pickOrderLines  PickOrderLine[]
+  shipmentLines   ShipmentLine[]
+  handlingUnits   HandlingUnit[]
   dimension       SkuDimension?
   velocity        VelocitySnapshot[]
   placements      SkuPlacement[]
@@ -615,6 +618,7 @@ enum RunStatus {
 enum RunKind {
   SLOT
   PICK_TOUR
+  PALLET
 }
 
 /// Her solver çağrısının değişmez kaydı: girdi snapshot'ı, kısıtlar, sürüm,
@@ -658,6 +662,219 @@ model OptimizationRun {
   resultPlan SlotPlan?
 
   @@index([tenantId, facilityId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Outbound: paket profilleri, sevkiyat ve palet planı (Faz 7)
+// ---------------------------------------------------------------------------
+
+/// Fiziksel paket profili. Yükleme kararlarının kaynağı budur; ölçüler metre,
+/// ağırlıklar kilogramdır.
+model PackageType {
+  id                      String  @id @default(cuid())
+  tenantId                String
+  code                    String
+  name                    String
+  /// case | pallet | drum | irregular | flexible
+  shape                   String
+  lengthM                 Float
+  widthM                  Float
+  heightM                 Float
+  tareKg                  Float   @default(0)
+  /// fixed | yaw | any
+  rotation                String  @default("yaw")
+  /// Üstüne binebilecek toplam yük. 0 ise üstüne hiçbir şey konamaz.
+  maxTopLoadKg            Float   @default(0)
+  minSupportRatio         Float   @default(0.75)
+  stackable               Boolean @default(true)
+  fragile                 Boolean @default(false)
+  compressionTolerancePct Float   @default(0)
+  /// ambient | chilled | frozen
+  temperatureClass        String  @default("ambient")
+  /// Farklı gruplar aynı palete konamaz; boş grup da kendi başına bir gruptur.
+  segregationGroup        String?
+
+  handlingUnits HandlingUnit[]
+  shipmentLines ShipmentLine[]
+  palletPlans   PalletPlan[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+enum ShipmentStatus {
+  DRAFT
+  READY
+  PLANNED
+  LOADED
+  DISPATCHED
+  CANCELLED
+}
+
+/// Bir araca yüklenecek sevkiyat. Rota ve durak sırası sabittir; yükleme
+/// motoru rotayı değiştirmez (yol haritası varsayımı).
+model Shipment {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  facilityId         String
+  code               String
+  carrierCode        String?
+  status             ShipmentStatus @default(READY)
+  plannedDepartureAt DateTime?
+  /// Plan hangi veri anlık görüntüsüyle üretildi.
+  snapshotAt         DateTime?
+  createdAt          DateTime       @default(now())
+
+  facility      Facility       @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  stops         ShipmentStop[]
+  lines         ShipmentLine[]
+  handlingUnits HandlingUnit[]
+  palletPlans   PalletPlan[]
+
+  @@unique([tenantId, facilityId, code])
+  @@index([tenantId, facilityId, status])
+}
+
+/// Rotadaki tek durak. `seq` teslim sırasıdır: 1 ilk durak.
+model ShipmentStop {
+  id               String    @id @default(cuid())
+  tenantId         String
+  shipmentId       String
+  seq              Int
+  code             String
+  name             String
+  address          String?
+  plannedArrivalAt DateTime?
+
+  shipment      Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  lines         ShipmentLine[]
+  handlingUnits HandlingUnit[]
+
+  @@unique([tenantId, shipmentId, seq])
+  @@unique([tenantId, shipmentId, code])
+  @@index([tenantId, shipmentId])
+}
+
+model ShipmentLine {
+  id            String @id @default(cuid())
+  tenantId      String
+  shipmentId    String
+  stopId        String
+  lineNo        Int
+  skuId         String
+  packageTypeId String
+  quantity      Int
+
+  shipment    Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  stop        ShipmentStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  /// Plana girmiş SKU sessizce silinemez.
+  sku         Sku          @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  packageType PackageType  @relation(fields: [packageTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, shipmentId, lineNo])
+  @@index([tenantId, shipmentId])
+}
+
+/// Taşınan tek fiziksel birim. Hiyerarşiktir: palet (SSCC) koli (SSCC) taşır.
+model HandlingUnit {
+  id            String  @id @default(cuid())
+  tenantId      String
+  shipmentId    String
+  code          String
+  /// GS1 SSCC — kaynak sistem kimliği gibi asla üzerine yazılmaz.
+  sscc          String?
+  packageTypeId String
+  /// Üst elleçleme birimi; kök birimlerde boş.
+  parentId      String?
+  skuId         String?
+  stopId        String?
+  quantity      Int     @default(1)
+  grossWeightKg Float
+
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  packageType PackageType    @relation(fields: [packageTypeId], references: [id], onDelete: Restrict)
+  parent      HandlingUnit?  @relation("HuHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    HandlingUnit[] @relation("HuHierarchy")
+  sku         Sku?           @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  stop        ShipmentStop?  @relation(fields: [stopId], references: [id], onDelete: SetNull)
+  placement   PalletPlacement?
+
+  @@unique([tenantId, code])
+  @@index([tenantId, shipmentId])
+}
+
+enum PalletPlanState {
+  DRAFT
+  /// Bağımsız doğrulayıcıdan geçti; yayınlanabilir.
+  VALIDATED
+  /// Doğrulayıcı ihlal buldu; yayınlanamaz.
+  REJECTED
+  PUBLISHED
+}
+
+/// Tek bir paletin yerleşim planı.
+model PalletPlan {
+  id         String @id @default(cuid())
+  tenantId   String
+  shipmentId String
+  /// Bu planı üreten çalıştırma; tekrar üretilebilirlik buna dayanır.
+  runId      String
+  seq        Int
+  code       String
+
+  baseTypeId  String
+  baseLengthM Float
+  baseWidthM  Float
+  deckHeightM Float
+  maxHeightM  Float
+  maxWeightKg Float
+
+  usedHeightM             Float
+  usedWeightKg            Float
+  volumeUtilizationPct    Float
+  footprintUtilizationPct Float
+  /// Yükün ağırlık merkezi, palet yereli (m).
+  cogX                    Float
+  cogY                    Float
+  cogZ                    Float
+
+  state       PalletPlanState @default(DRAFT)
+  validatedAt DateTime?
+  /// Bağımsız doğrulayıcının bulduğu ihlaller; boş dizi geçti demektir.
+  violations  Json?
+  createdAt   DateTime        @default(now())
+
+  shipment   Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  baseType   PackageType       @relation(fields: [baseTypeId], references: [id], onDelete: Restrict)
+  placements PalletPlacement[]
+
+  @@unique([tenantId, shipmentId, runId, seq])
+  @@index([tenantId, shipmentId])
+}
+
+model PalletPlacement {
+  id       String @id @default(cuid())
+  tenantId String
+  planId   String
+  huId     String @unique
+
+  /// Yönelim uygulandıktan sonraki dış ölçü ve palet yereli konum (m).
+  x             Float
+  y             Float
+  z             Float
+  lengthM       Float
+  widthM        Float
+  heightM       Float
+  grossWeightKg Float
+  layer         Int
+  /// Yerleştirme sırası; destekleyen kutu üstündekinden önce gelir.
+  seq           Int
+
+  plan PalletPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  hu   HandlingUnit @relation(fields: [huId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, planId, seq])
+  @@index([tenantId, planId])
 }
 
 // ---------------------------------------------------------------------------

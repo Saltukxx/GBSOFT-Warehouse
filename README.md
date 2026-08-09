@@ -110,7 +110,8 @@ portunu kullanır; 5432/5433 başka projeler tarafından kullanıldığı için 
 | 6 | 3B dijital ikiz, raf sistemi, rota replay | **Tamam** |
 | 6.5 | Yükleme siparişi, toplama turu optimizasyonu (CVRP) | **Tamam** |
 | 7.1 | Paket profilleri ve bağımsız palet doğrulayıcı | **Tamam** |
-| 7.2 | Outbound veri modeli, palet API'si ve 3B palet görünümü | Devam ediyor |
+| 7.2 | Outbound veri modeli ve doğrulama kapılı palet API'si | **Tamam** |
+| 7.3 | 3B palet görüntüleyici ve palet editörü | Bekliyor |
 | 8 | Rota-duyarlı truck loading ve execution | Bekliyor |
 | 9 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Bekliyor |
 
@@ -248,7 +249,23 @@ böyle ortaya çıktı.
 npm run crossvalidate:pallet
 ```
 
-**Plan doğrulayıcıdan geçmeden yayınlanamaz.**
+**Plan doğrulayıcıdan geçmeden yayınlanamaz.** API tarafında bu bir durum
+kapısıdır: çözücü sonucu `VALIDATED` değil, doğrulayıcı geçtiyse `VALIDATED`,
+geçmediyse ihlalleriyle birlikte `REJECTED` yazılır. İhlalli plan silinmez —
+kullanıcı neyin neden reddedildiğini görmek zorundadır.
+
+```bash
+curl -s -X POST localhost:3001/api/shipments -H 'content-type: application/json' \
+  -d '{"facility":"MARMARA-DC-01","code":"SHP-001","stops":[{"code":"S1","name":"İzmit"}],"lines":[{"stopCode":"S1","skuCode":"SKU-001","packageTypeCode":"CASE-STD","quantity":4}]}'
+```
+
+```bash
+curl -s -X POST localhost:3001/api/shipments/SHP-001/palletize -H 'content-type: application/json' -d '{"maxHeightM":1.8,"maxWeightKg":800}'
+curl -s localhost:3001/api/shipments/SHP-001/pallet-plans | jq '.plans[] | {code, state, usedHeightM, violations}'
+```
+
+Elleçleme birimleri sevkiyat satırlarından **idempotent** üretilir: aynı
+sevkiyat ikinci kez planlanınca yeni birim doğmaz.
 
 ## Kararlar
 
