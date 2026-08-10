@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -19,6 +19,34 @@ class AxleGroupInput(BaseModel):
     position_x: float = Field(ge=0)
     empty_load_kg: float = Field(ge=0)
     max_load_kg: float = Field(gt=0)
+    #: Yere basmayan mesnet: kingpin yükü beşinci teker üzerinden çekiciye
+    #: aktarır ve asıl yasal sınırlar orada uygulanır.
+    coupling: bool = False
+
+
+class TractorAxleInput(BaseModel):
+    code: str
+    label: str
+    #: Römorkun x ekseninde; yönlendirme dingili ön duvarın önünde olduğu
+    #: için negatif olabilir.
+    position_x: float
+    tare_load_kg: float = Field(ge=0)
+    max_load_kg: float = Field(gt=0)
+    driven: bool = False
+    steering: bool = False
+
+
+class TractorInput(BaseModel):
+    code: str
+    label: str
+    tare_kg: float = Field(ge=0)
+    axles: List[TractorAxleInput] = Field(min_length=2)
+
+
+class RegulationInput(BaseModel):
+    max_combination_weight_kg: float = Field(gt=0)
+    min_drive_axle_share: Optional[float] = None
+    min_steer_axle_share: Optional[float] = None
 
 
 class ObstacleInput(BaseModel):
@@ -48,6 +76,8 @@ class VehicleInput(BaseModel):
     rear_door: RearDoorInput
     max_payload_kg: float = Field(gt=0)
     axle_groups: List[AxleGroupInput] = Field(min_length=2)
+    tractor: Optional[TractorInput] = None
+    regulation: Optional[RegulationInput] = None
     obstacles: List[ObstacleInput] = Field(default_factory=list)
     cog_envelope: CogEnvelopeInput
 

@@ -689,6 +689,10 @@ model VehicleTemplate {
   maxPayloadKg    Float
   /// VehicleAxleGroup[]; konum ve boş/azami aks yükleri.
   axleGroups      Json
+  /// TractorSpec | null — yarı römorkta çeken birim; rijitte yok.
+  tractor         Json?
+  /// VehicleRegulation | null — katar ve dingil payı eşikleri.
+  regulation      Json?
   /// VehicleObstacle[]; teker davlumbazı gibi kullanılamayan hacimler.
   obstacles       Json
   cogMinX         Float
@@ -956,6 +960,8 @@ model LoadPlan {
   cogY                 Float
   cogZ                 Float
   axleLoads            Json
+  /// WeightDistributionReport — katar, kaplin ve dingil payları.
+  weightDistribution   Json
   rehandlingRiskCount  Int
   violations           Json
   validatedAt          DateTime?

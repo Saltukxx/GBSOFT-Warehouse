@@ -194,3 +194,109 @@ def test_gecersiz_sabit_yerlesimi_reddeder():
     result = solve_truck_load(TruckLoadRequest.model_validate(payload))
     assert result.status == "infeasible"
     assert "zarfını" in result.infeasibility_reasons[0]
+
+
+# --------------------------------------------------------------------
+# İki kademeli ağırlık zinciri
+# --------------------------------------------------------------------
+
+SEMI = {
+    "code": "SEMI-13M6",
+    "internal_length_m": 13.6,
+    "internal_width_m": 2.48,
+    "internal_height_m": 2.7,
+    "rear_door": {"width_m": 2.46, "height_m": 2.62, "sill_height_m": 1.2},
+    "max_payload_kg": 24000,
+    "axle_groups": [
+        {
+            "code": "KINGPIN",
+            "label": "Kingpin",
+            "position_x": 1.3,
+            "empty_load_kg": 4500,
+            "max_load_kg": 12000,
+            "coupling": True,
+        },
+        {
+            "code": "TRIDEM",
+            "label": "Tridem",
+            "position_x": 11.2,
+            "empty_load_kg": 3000,
+            "max_load_kg": 24000,
+        },
+    ],
+    "tractor": {
+        "code": "TRACTOR-4X2",
+        "label": "4x2 çekici",
+        "tare_kg": 7400,
+        "axles": [
+            {
+                "code": "STEER",
+                "label": "Yönlendirme",
+                "position_x": -2.0,
+                "tare_load_kg": 4600,
+                "max_load_kg": 7500,
+                "driven": False,
+                "steering": True,
+            },
+            {
+                "code": "DRIVE",
+                "label": "Tahrik",
+                "position_x": 1.7,
+                "tare_load_kg": 2800,
+                "max_load_kg": 11500,
+                "driven": True,
+                "steering": False,
+            },
+        ],
+    },
+    "regulation": {
+        "max_combination_weight_kg": 40000,
+        "min_drive_axle_share": 0.25,
+        "min_steer_axle_share": 0.2,
+    },
+    "obstacles": [],
+    "cog_envelope": {"min_x": 3.0, "max_x": 10.8, "min_y": 0.72, "max_y": 1.76, "max_z": 1.55},
+}
+
+
+def pallets(count, weight_kg=640):
+    return [
+        {
+            "hu_code": f"PAL-{index + 1:03d}",
+            "length_m": 1.2,
+            "width_m": 0.8,
+            "height_m": 1.45,
+            "gross_weight_kg": weight_kg,
+            "stop_code": f"S{index % 3 + 1}",
+            "stop_seq": index % 3 + 1,
+            "rotation": "yaw",
+            "floor_only": True,
+        }
+        for index in range(count)
+    ]
+
+
+def test_dolu_yari_romork_cekici_dingillerini_asmadan_yerlesir():
+    response = solve_truck_load(request(items=pallets(27), vehicle=SEMI))
+    assert response.status == "feasible"
+    assert len(response.positions) == 27
+
+
+def test_cekici_tahrik_dingili_siniri_yerlesimi_geriye_iter():
+    """Tek kademeli model bu kısıtı hiç görmüyordu.
+
+    Kingpin kuvvetinin yaklaşık %89'u tahrik dingiline gider; yük öne
+    yaslanırsa 11.500 kg sınırı aşılır. Çözücü bunu bildiği için bloğu
+    arkaya kaydırmak zorundadır.
+    """
+    response = solve_truck_load(request(items=pallets(27), vehicle=SEMI))
+    assert response.status == "feasible"
+    front_edge = min(position.x for position in response.positions)
+    assert front_edge > 0.5
+
+
+def test_katar_yasal_agirligini_asan_yuk_infeasible_doner():
+    heavy = dict(SEMI)
+    heavy["regulation"] = {**SEMI["regulation"], "max_combination_weight_kg": 20000}
+    response = solve_truck_load(request(items=pallets(20), vehicle=heavy))
+    assert response.status == "infeasible"

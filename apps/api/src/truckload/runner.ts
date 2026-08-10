@@ -49,7 +49,35 @@ function solverVehicle(vehicle: ReturnType<typeof toVehicleTemplate>) {
       position_x: axle.positionX,
       empty_load_kg: axle.emptyLoadKg,
       max_load_kg: axle.maxLoadKg,
+      coupling: axle.coupling ?? false,
     })),
+    ...(vehicle.tractor
+      ? {
+          tractor: {
+            code: vehicle.tractor.code,
+            label: vehicle.tractor.label,
+            tare_kg: vehicle.tractor.tareKg,
+            axles: vehicle.tractor.axles.map((axle) => ({
+              code: axle.code,
+              label: axle.label,
+              position_x: axle.positionX,
+              tare_load_kg: axle.tareLoadKg,
+              max_load_kg: axle.maxLoadKg,
+              driven: axle.driven,
+              steering: axle.steering,
+            })),
+          },
+        }
+      : {}),
+    ...(vehicle.regulation
+      ? {
+          regulation: {
+            max_combination_weight_kg: vehicle.regulation.maxCombinationWeightKg,
+            min_drive_axle_share: vehicle.regulation.minDriveAxleShare,
+            min_steer_axle_share: vehicle.regulation.minSteerAxleShare,
+          },
+        }
+      : {}),
     obstacles: vehicle.obstacles.map((obstacle) => ({
       code: obstacle.code,
       label: obstacle.label,
@@ -310,6 +338,7 @@ export async function executeTruckLoadRun(runId: string): Promise<void> {
           cogY: validation.centerOfGravity.y,
           cogZ: validation.centerOfGravity.z,
           axleLoads: json(validation.axleLoads),
+          weightDistribution: json(validation.weightDistribution),
           rehandlingRiskCount: validation.rehandlingRiskCount,
           violations: json(validation.violations),
           validatedAt: new Date(),

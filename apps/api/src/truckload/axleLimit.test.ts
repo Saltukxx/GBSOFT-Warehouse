@@ -7,13 +7,13 @@ import { config } from "../config.js";
 import { prisma } from "../db.js";
 
 /**
- * Dolu römork: aks limitinin planı gerçekten değiştirdiği senaryo.
+ * Dolu römork: dingil zincirinin planı gerçekten değiştirdiği senaryo.
  *
  * `truckload.test.ts` karışık koli sevkiyatını kullanır — 12 birim, römorkun
- * yüzde ikisi. O sevkiyatta aks yükü, ağırlık merkezi ve kapı açıklığı
- * kısıtlarının hiçbiri bağlayıcı olmaz, yani Faz 8.1 doğrulayıcısının asıl
- * dalları test edilmeden kalır. Buradaki sevkiyat 27 palet birim yüküyle
- * römorku ağırlık tarafından doldurur ve kingpin sınırını bağlayıcı yapar.
+ * yüzde ikisi. O sevkiyatta dingil, ağırlık merkezi ve kapı açıklığı
+ * kısıtlarının hiçbiri bağlayıcı olmaz. Buradaki sevkiyat 27 palet birim
+ * yüküyle römorku ağırlık tarafından doldurur; kingpin kuvveti çekiciye
+ * aktarılınca tahrik dingili sınırı bağlayıcı olur.
  */
 
 const TENANT_ID = "gbsoft-pilot";
@@ -131,8 +131,8 @@ function kingpinPayloadKg(
   return (payloadKg * (tridem.positionX - cogX)) / span;
 }
 
-describe.skipIf(!ready)("dolu römorkta aks limiti", () => {
-  it("27 palet birim yükünü aks ve CoG kısıtlarını sağlayarak yerleştirir", async () => {
+describe.skipIf(!ready)("dolu römorkta dingil zinciri", () => {
+  it("27 palet birim yükünü dingil ve CoG kısıtlarını sağlayarak yerleştirir", async () => {
     const started = await app.inject({
       method: "POST",
       url: `/api/shipments/${SHIPMENT_CODE}/truck-load`,
@@ -161,6 +161,12 @@ describe.skipIf(!ready)("dolu römorkta aks limiti", () => {
     expect(plan.payloadKg).toBeLessThan(plan.vehicle.maxPayloadKg);
     expect(plan.volumeUtilizationPct).toBeLessThan(60);
 
+    // Çekici dingilleri de raporda olmalı; kaplin yere basmaz ama listelenir.
+    expect(plan.axleLoads.some((axle) => axle.kind === "tractor-axle")).toBe(true);
+    expect(plan.axleLoads.some((axle) => axle.kind === "coupling")).toBe(true);
+    expect(plan.weightDistribution.driveAxleSharePct).not.toBeNull();
+    expect(plan.weightDistribution.driveAxleSharePct!).toBeGreaterThanOrEqual(25);
+
     for (const axle of plan.axleLoads) {
       expect(axle.totalLoadKg).toBeLessThanOrEqual(axle.maxLoadKg);
     }
@@ -171,7 +177,7 @@ describe.skipIf(!ready)("dolu römorkta aks limiti", () => {
     expect(plan.centerOfGravity.z).toBeLessThanOrEqual(envelope.maxZ);
   });
 
-  it("aks limiti bağlayıcıdır: yükü öne yaslamak kingpin'i aşardı", async () => {
+  it("tahrik dingili bağlayıcıdır: yükü öne yaslamak çekiciyi aşardı", async () => {
     const plans = await app.inject({
       method: "GET",
       url: `/api/shipments/${SHIPMENT_CODE}/load-plans`,
@@ -180,12 +186,13 @@ describe.skipIf(!ready)("dolu römorkta aks limiti", () => {
     const kingpin = plan.vehicle.axleGroups.find((axle) => axle.code === "KINGPIN")!;
     const available = kingpin.maxLoadKg - kingpin.emptyLoadKg;
 
-    // Üretilen plan sınırın altında kalıyor…
+    // Üretilen plan kaplin kapasitesinin altında kalıyor…
     expect(kingpinPayloadKg(plan.vehicle, plan.payloadKg, plan.centerOfGravity.x))
       .toBeLessThanOrEqual(available);
 
-    // …ama aynı yük öne yaslansaydı aşardı. Bu kısıt bağlayıcı olmasaydı test
-    // sessizce geçerdi ve senaryo hiçbir şey kanıtlamazdı.
+    // …ama aynı yük öne yaslansaydı hem kaplin hem tahrik dingili aşardı.
+    // Tek kademeli model yalnız kaplini görürdü; iki kademeli zincir asıl
+    // bağlayıcı olan tahrik sınırını da yakalar.
     const blockLengthM = Math.ceil(TOTAL_PALLETS / 3) * 1.2;
     const frontFlushCogX = blockLengthM / 2;
     expect(kingpinPayloadKg(plan.vehicle, plan.payloadKg, frontFlushCogX))
@@ -193,5 +200,6 @@ describe.skipIf(!ready)("dolu römorkta aks limiti", () => {
 
     // Çözücü yükü gerçekten arkaya kaydırmış olmalı.
     expect(plan.centerOfGravity.x).toBeGreaterThan(frontFlushCogX);
+    expect(plan.weightDistribution.driveAxleSharePct!).toBeGreaterThanOrEqual(25);
   });
 });

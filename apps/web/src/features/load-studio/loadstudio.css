@@ -37,6 +37,7 @@
 .loadstudio__replay input { width: 100%; }
 
 .loadstudio__cog { margin-bottom: var(--space-3); padding: 7px 9px; border-left: 3px solid #e03d30; background: var(--surface-1); font-family: var(--font-mono); font-size: var(--text-xs); }
+.loadstudio__distribution { margin: 0 0 var(--space-3); padding: 7px 9px; border: 1px solid var(--line-subtle); border-radius: var(--radius-sm); background: var(--surface-1); }
 .loadstudio__axles { display: grid; gap: var(--space-3); }
 .loadstudio__axles > div { display: grid; grid-template-columns: minmax(100px, 1fr) 52px; gap: 3px var(--space-2); align-items: center; }
 .loadstudio__axles span { display: flex; justify-content: space-between; grid-column: 1 / -1; gap: var(--space-2); font-size: var(--text-2xs); }
@@ -45,6 +46,9 @@
 .loadstudio__axles em { font-style: normal; font-family: var(--font-mono); font-size: var(--text-2xs); text-align: right; }
 .loadstudio__bar { height: 7px; overflow: hidden; border-radius: 4px; background: var(--surface-2); }
 .loadstudio__bar i { display: block; height: 100%; border-radius: inherit; background: var(--blue-600); }
+.loadstudio__axles > div[data-kind="coupling"] .loadstudio__bar i { background: var(--ink-500); }
+.loadstudio__axles > div[data-over="true"] .loadstudio__bar i { background: var(--red-700); }
+.loadstudio__axles > div[data-over="true"] em { color: var(--red-700); }
 
 .loadstudio__editor-body { display: grid; gap: var(--space-4); }
 .loadstudio__selected { display: flex; justify-content: space-between; gap: var(--space-3); align-items: start; }

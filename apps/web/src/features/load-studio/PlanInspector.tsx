@@ -1,12 +1,62 @@
-import type { TruckLoadPlanView } from "@gbsoft/domain";
+import type {
+  AxleLoadKind,
+  TruckLoadPlanView,
+  WeightDistributionReport,
+} from "@gbsoft/domain";
 import { EmptyState, Panel, StatusTag } from "../../components/ui/primitives";
 import { Icon } from "../../components/ui/Icon";
+import { AXLE_KIND_LABEL } from "./labels";
 
 export type CoordinateDraft = { x: string; y: string; z: string };
 
 type Placement = TruckLoadPlanView["placements"][number];
 
-/** Aks yükleri ve ağırlık merkezi. */
+function formatShare(
+  value: number | null,
+  minimum: number | null,
+): string | null {
+  if (value === null) return null;
+  if (minimum === null) return `%${value.toFixed(1)}`;
+  return `%${value.toFixed(1)} / asgari %${minimum.toFixed(0)}`;
+}
+
+function DistributionFacts({ report }: { report: WeightDistributionReport }) {
+  const rows: Array<{ label: string; value: string }> = [
+    {
+      label: "Katar",
+      value:
+        report.maxCombinationKg === null
+          ? `${report.combinationKg.toFixed(0)} kg`
+          : `${report.combinationKg.toFixed(0)} / ${report.maxCombinationKg.toFixed(0)} kg`,
+    },
+  ];
+  if (report.couplingLoadKg !== null) {
+    rows.push({
+      label: "Kaplin",
+      value:
+        report.couplingCapacityKg === null
+          ? `${report.couplingLoadKg.toFixed(0)} kg`
+          : `${report.couplingLoadKg.toFixed(0)} / ${report.couplingCapacityKg.toFixed(0)} kg`,
+    });
+  }
+  const drive = formatShare(report.driveAxleSharePct, report.minDriveAxleSharePct);
+  if (drive) rows.push({ label: "Tahrik payı", value: drive });
+  const steer = formatShare(report.steerAxleSharePct, report.minSteerAxleSharePct);
+  if (steer) rows.push({ label: "Direksiyon payı", value: steer });
+
+  return (
+    <dl className="loadstudio__facts loadstudio__distribution">
+      {rows.map((row) => (
+        <div key={row.label}>
+          <dt>{row.label}</dt>
+          <dd>{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Aks yükleri, katar dağılımı ve ağırlık merkezi. */
 export function AxleBalancePanel({ plan }: { plan: TruckLoadPlanView }) {
   return (
     <Panel title="Aks ve denge" note={<span className="text-2xs muted">Kırmızı nokta: CoG</span>}>
@@ -14,23 +64,33 @@ export function AxleBalancePanel({ plan }: { plan: TruckLoadPlanView }) {
         x {plan.centerOfGravity.x.toFixed(2)} · y {plan.centerOfGravity.y.toFixed(2)} · z{" "}
         {plan.centerOfGravity.z.toFixed(2)} m
       </div>
+      <DistributionFacts report={plan.weightDistribution} />
       <div className="loadstudio__axles">
-        {plan.axleLoads.map((axle) => (
-          <div key={axle.code}>
-            <span>
-              <strong>{axle.code}</strong>
-              <small>
-                {axle.totalLoadKg.toFixed(0)} / {axle.maxLoadKg.toFixed(0)} kg
-              </small>
-            </span>
-            <div className="loadstudio__bar">
-              {/* Dolgu %100'de kırpılır: sınırı aşan yük çubuğu taşırmaz,
-                  ihlali doğrulama listesi bildirir. */}
-              <i style={{ width: `${Math.min(100, axle.utilizationPct)}%` }} />
+        {plan.axleLoads.map((axle) => {
+          const kind = (axle.kind ?? "trailer-axle") as AxleLoadKind;
+          const over = axle.utilizationPct > 100;
+          return (
+            <div
+              key={axle.code}
+              data-kind={kind}
+              data-over={over ? "true" : undefined}
+            >
+              <span>
+                <strong>{axle.code}</strong>
+                <small>
+                  {AXLE_KIND_LABEL[kind]} · {axle.totalLoadKg.toFixed(0)} /{" "}
+                  {axle.maxLoadKg.toFixed(0)} kg
+                </small>
+              </span>
+              <div className="loadstudio__bar">
+                {/* Dolgu %100'de kırpılır: sınırı aşan yük çubuğu taşırmaz,
+                    ihlali doğrulama listesi bildirir. */}
+                <i style={{ width: `${Math.min(100, axle.utilizationPct)}%` }} />
+              </div>
+              <em>%{axle.utilizationPct.toFixed(1)}</em>
             </div>
-            <em>%{axle.utilizationPct.toFixed(1)}</em>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Panel>
   );

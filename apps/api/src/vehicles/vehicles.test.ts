@@ -46,6 +46,9 @@ describe.skipIf(!databaseAvailable)("araç şablonu API'si", () => {
     const template = response.json() as VehicleTemplate;
     expect(template.rearDoor.widthM).toBeGreaterThan(0);
     expect(template.axleGroups.length).toBeGreaterThanOrEqual(2);
+    expect(template.axleGroups.some((axle) => axle.coupling)).toBe(true);
+    expect(template.tractor?.axles.some((axle) => axle.driven)).toBe(true);
+    expect(template.regulation?.minDriveAxleShare).toBe(0.25);
     expect(template.cogEnvelope.minX).toBeLessThan(template.cogEnvelope.maxX);
     expect(template.maxPayloadKg).toBeGreaterThan(0);
   });

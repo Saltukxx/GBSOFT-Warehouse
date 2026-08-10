@@ -463,6 +463,8 @@ async function main() {
         rearDoorSillM: vehicle.rearDoor.sillHeightM,
         maxPayloadKg: vehicle.maxPayloadKg,
         axleGroups: vehicle.axleGroups as unknown as Prisma.InputJsonValue,
+        tractor: (vehicle.tractor ?? null) as unknown as Prisma.InputJsonValue,
+        regulation: (vehicle.regulation ?? null) as unknown as Prisma.InputJsonValue,
         obstacles: vehicle.obstacles as unknown as Prisma.InputJsonValue,
         cogMinX: vehicle.cogEnvelope.minX,
         cogMaxX: vehicle.cogEnvelope.maxX,

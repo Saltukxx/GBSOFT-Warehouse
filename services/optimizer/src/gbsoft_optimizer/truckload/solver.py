@@ -22,7 +22,7 @@ from .models import (
     TruckLoadResponse,
 )
 
-SOLVER_VERSION = "truck-load-route-band-1.0.0"
+SOLVER_VERSION = "truck-load-route-band-1.1.0"
 EPS = 1e-6
 
 
@@ -55,24 +55,210 @@ def _intersects(a: Packed, obstacle, offset_x: float) -> bool:
     )
 
 
-def _axle_payloads(request: TruckLoadRequest, packed: List[Packed], offset_x: float) -> List[float]:
-    axles = sorted(request.vehicle.axle_groups, key=lambda axle: axle.position_x)
-    loads = [0.0 for _ in axles]
-    for item in packed:
-        point = item.x + offset_x + item.length_m / 2
-        if point <= axles[0].position_x:
-            loads[0] += item.unit.gross_weight_kg
+
+def _fill_shelf(
+    remaining: List[LoadUnitInput],
+    internal_width_m: float,
+    prefer_index: int,
+) -> Tuple[List[Tuple[LoadUnitInput, float, float]], float, float, List[LoadUnitInput]]:
+    """Bir rafı, ilk birimin yönelimi verilmişken doldurur."""
+    shelf: List[Tuple[LoadUnitInput, float, float]] = []
+    used_width = 0.0
+    shelf_length = 0.0
+    deferred: List[LoadUnitInput] = []
+
+    for unit in remaining:
+        options = _orientations(unit)
+        if not shelf and prefer_index < len(options):
+            # Rafın yönelimini ilk birim belirler; sonrakiler ona uyar.
+            options = [options[prefer_index]]
+        candidates = [
+            (length, width)
+            for length, width in options
+            if used_width + width <= internal_width_m + EPS
+        ]
+        if not candidates:
+            deferred.append(unit)
             continue
-        if point >= axles[-1].position_x:
-            loads[-1] += item.unit.gross_weight_kg
+        length, width = min(
+            candidates,
+            key=lambda value: (max(shelf_length, value[0]), value[1], value[0]),
+        )
+        shelf.append((unit, length, width))
+        used_width += width
+        shelf_length = max(shelf_length, length)
+
+    return shelf, used_width, shelf_length, deferred
+
+
+def _pack_group(
+    units: List[LoadUnitInput],
+    internal_width_m: float,
+) -> Optional[List[Tuple[List[Tuple[LoadUnitInput, float, float]], float, float]]]:
+    """Bir durak bloğunu en az boyuna yer kaplayacak yönelimle raflara böler.
+
+    Yönelim kararı raf raf verilemez. 1,2 × 0,8 m paletin iki yönelimi de
+    metre başına aynı yoğunluğu verir; farkı artan birim yapar. 2,48 m
+    genişliğe boyuna 3 palet sığar ve 27 palet 9 tam raf eder (10,8 m);
+    yanlamasına 2 sığar ve 13,5 raf eder, yani yarım raf boşa gider (11,2 m).
+
+    Kaybedilen 0,4 m yalnız hacim değil: boyuna oyun, çözücünün dingil
+    limitlerini sağlamak için yükü kaydırabildiği payın kendisidir. Yönelim
+    açgözlü seçilince gerçek bir sefer imkânsız hâle geliyordu.
+    """
+    best: Optional[Tuple[Tuple[float, int], List[Tuple[List[Tuple[LoadUnitInput, float, float]], float, float]]]] = None
+
+    for prefer_index in range(2):
+        shelves: List[Tuple[List[Tuple[LoadUnitInput, float, float]], float, float]] = []
+        remaining = list(units)
+        total_length = 0.0
+        ok = True
+
+        while remaining:
+            shelf, used_width, shelf_length, deferred = _fill_shelf(
+                remaining, internal_width_m, prefer_index
+            )
+            if not shelf:
+                ok = False
+                break
+            shelves.append((shelf, used_width, shelf_length))
+            total_length += shelf_length
+            remaining = deferred
+
+        if not ok or not shelves:
             continue
-        right = next(index for index, axle in enumerate(axles) if axle.position_x >= point)
+        key = (round(total_length, 6), prefer_index)
+        if best is None or key < best[0]:
+            best = (key, shelves)
+
+    return None if best is None else best[1]
+
+
+def _distribute(
+    positions: List[float], points: List[tuple]
+) -> List[float]:
+    """Ağırlıkları mesnetlere statik denge ile dağıtır.
+
+    `packages/domain/src/truckLoad.ts` içindeki `distributeOntoSupports` ile
+    birebir aynı kuraldır. İki uygulamanın ayrışması, çözücünün doğrulayıcının
+    reddedeceği planlar üretmesi demek olurdu.
+
+    İki mesnette çözüm kesindir ve konsol yükünü de doğru verir; mesnet
+    dışındaki kütlede reaksiyon negatife döner, çünkü arka dingilin arkasına
+    konan yük kingpin'i kaldırır.
+    """
+    loads = [0.0 for _ in positions]
+    if not positions:
+        return loads
+    if len(positions) == 1:
+        return [sum(weight for _, weight in points)]
+
+    if len(positions) == 2:
+        span = positions[1] - positions[0]
+        for point_x, weight in points:
+            front = weight * (positions[1] - point_x) / span
+            loads[0] += front
+            loads[1] += weight - front
+        return loads
+
+    for point_x, weight in points:
+        if point_x <= positions[0]:
+            loads[0] += weight
+            continue
+        if point_x >= positions[-1]:
+            loads[-1] += weight
+            continue
+        right = next(index for index, value in enumerate(positions) if value >= point_x)
         left = right - 1
-        span = axles[right].position_x - axles[left].position_x
-        right_share = (point - axles[left].position_x) / span
-        loads[left] += item.unit.gross_weight_kg * (1 - right_share)
-        loads[right] += item.unit.gross_weight_kg * right_share
+        span = positions[right] - positions[left]
+        right_share = (point_x - positions[left]) / span
+        loads[left] += weight * (1 - right_share)
+        loads[right] += weight * right_share
     return loads
+
+
+def _axle_check(
+    request: TruckLoadRequest, packed: List[Packed], offset_x: float
+) -> bool:
+    """Yükten yere kadar ağırlık zincirinin yasal sınırlar içinde olup olmadığı.
+
+    Yarı römorkta yük doğrudan dingillere binmez: önce kingpin ile römork
+    dingil grubuna, sonra kingpin kuvveti çekicinin yönlendirme ve tahrik
+    dingillerine dağılır. Tahrik dingili sınırı pratikte çoğu seferde
+    bağlayıcı olan kısıttır ve tek kademeli model onu hiç görmüyordu.
+    """
+    vehicle = request.vehicle
+    groups = sorted(vehicle.axle_groups, key=lambda axle: axle.position_x)
+    points = [
+        (item.x + offset_x + item.length_m / 2, item.unit.gross_weight_kg)
+        for item in packed
+    ]
+    payload = sum(weight for _, weight in points)
+    trailer_loads = _distribute([axle.position_x for axle in groups], points)
+
+    coupling_index = next(
+        (index for index, axle in enumerate(groups) if axle.coupling), None
+    )
+    grounded: List[float] = []
+
+    for index, axle in enumerate(groups):
+        total = axle.empty_load_kg + trailer_loads[index]
+        if total > axle.max_load_kg + EPS:
+            return False
+        if index != coupling_index:
+            grounded.append(total)
+
+    trailer_tare = sum(axle.empty_load_kg for axle in groups)
+    tractor_tare = 0.0
+    tractor_laden = None
+    drive_total = None
+    steer_total = None
+
+    if vehicle.tractor is not None and coupling_index is not None:
+        coupling = groups[coupling_index]
+        coupling_load = coupling.empty_load_kg + trailer_loads[coupling_index]
+        axles = sorted(vehicle.tractor.axles, key=lambda axle: axle.position_x)
+        shares = _distribute(
+            [axle.position_x for axle in axles], [(coupling.position_x, coupling_load)]
+        )
+        tractor_tare = sum(axle.tare_load_kg for axle in axles)
+        tractor_laden = tractor_tare + coupling_load
+        drive_total = 0.0
+        steer_total = 0.0
+        for axle, share in zip(axles, shares):
+            total = axle.tare_load_kg + share
+            if total > axle.max_load_kg + EPS:
+                return False
+            grounded.append(total)
+            if axle.driven:
+                drive_total += total
+            if axle.steering:
+                steer_total += total
+
+    combination = payload + trailer_tare + tractor_tare
+    regulation = vehicle.regulation
+    if regulation is not None:
+        if combination > regulation.max_combination_weight_kg + EPS:
+            return False
+        if combination > 0 and payload > 0:
+            # Tahrik payı katara göre ölçülür (96/53/AT Ek I 4.1).
+            if (
+                regulation.min_drive_axle_share is not None
+                and drive_total is not None
+                and drive_total / combination < regulation.min_drive_axle_share - EPS
+            ):
+                return False
+            # Yönlendirme payı ise çekicinin kendi yüklü ağırlığına göre;
+            # katara göre ölçmek fiziksel olarak yanlış olurdu.
+            if (
+                regulation.min_steer_axle_share is not None
+                and steer_total is not None
+                and tractor_laden is not None
+                and tractor_laden > 0
+                and steer_total / tractor_laden < regulation.min_steer_axle_share - EPS
+            ):
+                return False
+    return True
 
 
 def _safe_offset(
@@ -97,7 +283,6 @@ def _safe_offset(
     # Kapıya en yakın, fakat aks/CoG/engel bakımından güvenli konumu ara.
     upper_cm = math.floor((max_offset + EPS) * 100)
     lower_cm = math.ceil(max(0.0, min_offset - EPS) * 100)
-    axles = sorted(vehicle.axle_groups, key=lambda axle: axle.position_x)
     candidates = [cm / 100 for cm in range(upper_cm, lower_cm - 1, -1)]
     if (
         preferred_offset is not None
@@ -109,11 +294,7 @@ def _safe_offset(
     for offset in candidates:
         if any(_intersects(item, obstacle, offset) for item in packed for obstacle in vehicle.obstacles):
             continue
-        loads = _axle_payloads(request, packed, offset)
-        if any(
-            axle.empty_load_kg + load > axle.max_load_kg + EPS
-            for axle, load in zip(axles, loads)
-        ):
+        if not _axle_check(request, packed, offset):
             continue
         return offset
     return None
@@ -337,38 +518,21 @@ def solve_truck_load(request: TruckLoadRequest) -> TruckLoadResponse:
             [unit for unit in request.units if unit.stop_seq == stop_seq],
             key=lambda unit: (-max(unit.length_m, unit.width_m), -unit.gross_weight_kg, unit.hu_code),
         )
-        while remaining:
-            shelf: List[Tuple[LoadUnitInput, float, float]] = []
-            used_width = 0.0
-            shelf_length = 0.0
-            deferred: List[LoadUnitInput] = []
-            for unit in remaining:
-                candidates = [
-                    (length, width)
-                    for length, width in _orientations(unit)
-                    if used_width + width <= vehicle.internal_width_m + EPS
-                ]
-                if not candidates:
-                    deferred.append(unit)
-                    continue
-                length, width = min(candidates, key=lambda value: (max(shelf_length, value[0]), value[1], value[0]))
-                shelf.append((unit, length, width))
-                used_width += width
-                shelf_length = max(shelf_length, length)
-            if not shelf:
-                return _infeasible(
-                    request,
-                    started,
-                    ["Yükler araç genişliğinde geçerli bir rafa yerleştirilemedi."],
-                    ["Daha geniş araç seçin veya yük birimini yeniden paketleyin."],
-                    [unit.hu_code for unit in remaining],
-                )
+        shelves = _pack_group(remaining, vehicle.internal_width_m)
+        if shelves is None:
+            return _infeasible(
+                request,
+                started,
+                ["Yükler araç genişliğinde geçerli bir rafa yerleştirilemedi."],
+                ["Daha geniş araç seçin veya yük birimini yeniden paketleyin."],
+                [unit.hu_code for unit in remaining],
+            )
+        for shelf, used_width, shelf_length in shelves:
             y = (vehicle.internal_width_m - used_width) / 2
             for unit, length, width in shelf:
                 packed.append(Packed(unit=unit, x=cursor_x, y=y, length_m=length, width_m=width))
                 y += width
             cursor_x += shelf_length
-            remaining = deferred
 
     if cursor_x > vehicle.internal_length_m + EPS:
         return _infeasible(

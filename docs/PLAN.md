@@ -54,7 +54,7 @@ kurulur, kalibrasyonun kendisi ilk müşteriyle yapılır.
 | 7.1 | Paket profilleri ve bağımsız doğrulayıcı | Geometri/fizik kuralları çözücüden bağımsız ikinci kez doğrulanır | **Tamam** |
 | 7.2 | Outbound modeli ve palet API'si | `Shipment`, `HandlingUnit`, `PalletPlan`; doğrulama kapılı extreme-point packing | **Tamam** |
 | 7.3 | 3B palet görüntüleyici ve editör | Move/rotate/lock kalıcıdır; kilitli destek zinciri warm-start çözmede korunur | **Tamam** |
-| 8.1 | Araç şablonları ve bağımsız load doğrulayıcı | Sınır, kapı, engel, toplam/aks yükü, CoG ve stop erişimi tekrar hesaplanır | **Tamam** |
+| 8.1 | Araç şablonları ve bağımsız load doğrulayıcı | Sınır, kapı, engel, katar/dingil zinciri, CoG ve stop erişimi tekrar hesaplanır | **Tamam** |
 | 8.2 | Rota-duyarlı truck-load solver ve API | Sabit rotada ilk durak kapıya, son durak derine gider; plan/run kalıcıdır | **Tamam** |
 | 8.3 | 3B Load Studio ve editör | Stop rengi, aks/CoG, replay, move/rotate/lock ve warm-start | **Tamam** |
 | 8.4 | Execution ve shadow publish | Barkod teyidi, sapma replanı, talimat çıktısı; Faz 9'a kadar canlı publish kapalı | **Tamam** |

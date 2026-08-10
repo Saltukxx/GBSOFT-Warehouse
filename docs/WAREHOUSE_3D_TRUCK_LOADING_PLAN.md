@@ -99,19 +99,22 @@ erişimi kısıtlarının hiçbiri bağlayıcı olmaz — yani Faz 8.1 doğrulay
 asıl dalları demo veriyle hiç çalışmıyordu.
 
 `SHP-DEMO-002` bu boşluğu kapatır: 3 durak, 27 palet birim yükü, ~640 kg/palet,
-toplam 17,2 t. Ölçülen sonuç:
+toplam 17,2 t. Ağırlık zinciri iki kademelidir: yük önce kingpin + tridem'e,
+kingpin kuvveti sonra çekicinin yönlendirme ve tahrik dingillerine dağılır.
+Ölçülen tipik sonuç (golden 4x2 çekici + SEMI-13M6):
 
 | Ölçü | Değer |
 | --- | --- |
-| Hacim doluluğu | %41,3 |
-| KINGPIN | 10.673 / 12.000 kg (%88,9) |
-| TRIDEM | 14.076 / 27.000 kg (%52,1) |
-| CoG x | 7,92 m (zarf 3–10,8 m) |
-| Yerleşim x aralığı | 2,4 → 12,8 m |
+| Hacim doluluğu | ~%41 |
+| STEER / DRIVE | çekici dingilleri; tahrik sınırı bağlayıcıdır |
+| KINGPIN | kaplin / beşinci teker (yere basmaz; 12 t düşey kapasite) |
+| TRIDEM | 24 t yasal grup sınırı |
+| CoG x | zarf 3–10,8 m içinde |
+| Tahrik payı | ≥ %25 (96/53/AT Ek I 4.1) |
 
-Yük öne yaslansaydı kingpin payı 14,6 t'ye çıkardı — sınırın 2,6 t üstünde.
-Çözücü bloğu arkaya kaydırdığı için plan geçerli. Aks kısıtının yerleşimi
-gerçekten değiştirdiği tek senaryo budur; `axleLimit.test.ts` hem sonucu hem
+Yük öne yaslansaydı kaplin kuvvetinin ~%89'u tahrik dingiline gider ve 11,5 t
+sınırı aşılırdı; eski tek kademeli model bunu hiç görmüyordu. Çözücü bloğu
+arkaya kaydırdığı için plan geçerli. `axleLimit.test.ts` hem sonucu hem
 "öne yaslanmış yerleşim ihlal ederdi" iddiasını sınar.
 
 Sevkiyat satırları palet birim yükünü doğrudan taşır (`PALLET-EUR-LOADED`).

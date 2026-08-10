@@ -28,6 +28,81 @@ export type VehicleAxleGroup = {
   /** Boş aracın bu gruptaki statik yükü. */
   emptyLoadKg: number;
   maxLoadKg: number;
+  /**
+   * Bu grup yere basmaz.
+   *
+   * Yarı römorkun ön mesnedi bir dingil değil, kingpin'dir: yükü beşinci
+   * teker üzerinden çekiciye aktarır. Buradaki kuvvet bir dingil yükü gibi
+   * denetlenemez — çekicinin yönlendirme ve tahrik dingillerine dağılır ve
+   * asıl yasal sınırlar orada uygulanır. `maxLoadKg` bu grupta beşinci
+   * tekerin düşey kapasitesidir.
+   */
+  coupling?: boolean;
+};
+
+/**
+ * Çekicinin bir dingil grubu.
+ *
+ * Konum, römorkun kendi x ekseninde ifade edilir: 0 römorkun ön duvarıdır ve
+ * çekici önde durduğu için yönlendirme dingili negatif çıkar. Tek eksen
+ * kullanmak iki kademeli hesabı doğrudan yapılabilir kılıyor.
+ */
+export type TractorAxle = {
+  code: string;
+  label: string;
+  positionX: number;
+  /** Çekicinin kendi darasından bu dingile düşen pay. */
+  tareLoadKg: number;
+  maxLoadKg: number;
+  /** Tahrikli dingil; asgari tahrik payı kuralı buna uygulanır. */
+  driven: boolean;
+  /** Yönlendirme dingili; asgari yönlendirme payı kuralı buna uygulanır. */
+  steering: boolean;
+};
+
+/**
+ * Yarı römorku çeken birim.
+ *
+ * Rijit araçta ve şasi üstü konteynerde yoktur; o durumda `axleGroups`
+ * doğrudan yere basan dingillerdir.
+ */
+export type TractorSpec = {
+  code: string;
+  label: string;
+  axles: TractorAxle[];
+  /** Boş çekicinin toplam ağırlığı; dingil paylarının toplamı olmalıdır. */
+  tareKg: number;
+};
+
+/**
+ * Yasal eşikler.
+ *
+ * Değerler 96/53/AT ve Karayolları Trafik Yönetmeliği'nin ortak
+ * uygulamasından alınmıştır ve şablon varsayılanıdır: gerçek sefer ruhsat,
+ * dingil mesafesi ve ülke istisnalarına göre değişir.
+ */
+export type VehicleRegulation = {
+  /** Kombinasyonun yasal azami yüklü ağırlığı (kg). */
+  maxCombinationWeightKg: number;
+  /**
+   * Tahrikli dingil(ler) kombinasyonun en az bu oranını taşımalı.
+   *
+   * 96/53/AT Ek I 4.1: yüklü ağırlığın %25'i. Yükü tamamen arkaya kaydırmak
+   * dingil sınırlarını rahatlatır ama çekişi bitirir; kısıtı iki taraflı
+   * yapan kural budur.
+   */
+  minDriveAxleShare?: number;
+  /**
+   * Yönlendirme dingili **çekicinin kendi yüklü ağırlığının** en az bu
+   * oranını taşımalı.
+   *
+   * Referans bilerek katar değil çekicidir. Katara göre ölçmek fiziksel
+   * olarak yanlış: 32 t'lik bir katarın %20'si 6,4 t eder ve bu, 7,5 t
+   * sınırlı bir yönlendirme dingilinin neredeyse tamamıdır — gerçekte yüklü
+   * bir çekicide ön dingil katarın ~%17'sini taşır ve bu normaldir. Kural
+   * direksiyon hâkimiyetiyle ilgilidir ve çeken aracın kendi dengesine bakar.
+   */
+  minSteerAxleShare?: number;
 };
 
 export type VehicleTemplate = {
@@ -44,6 +119,9 @@ export type VehicleTemplate = {
   };
   maxPayloadKg: number;
   axleGroups: VehicleAxleGroup[];
+  /** Yarı römorkta çeken birim; rijit araçta ve konteynerde yok. */
+  tractor?: TractorSpec;
+  regulation?: VehicleRegulation;
   obstacles: VehicleObstacle[];
   /** Güvenli yük ağırlık merkezi zarfı, araç yerelinde. */
   cogEnvelope: {
@@ -105,6 +183,10 @@ export type TruckLoadViolationCode =
   | "over-payload"
   | "invalid-axle-layout"
   | "axle-overload"
+  | "fifth-wheel-overload"
+  | "drive-axle-underload"
+  | "steer-axle-underload"
+  | "over-combination-weight"
   | "cog-outside-envelope"
   | "stop-access-blocked"
   | "stop-precedence";
@@ -115,20 +197,61 @@ export type TruckLoadViolation = {
   message: string;
 };
 
+/**
+ * Bir mesnedin türü.
+ *
+ * Rapor bunları ayırmak zorunda: `coupling` yere basmaz ve yasal dingil
+ * sınırına tabi değildir, `tractor-axle` ise römorkun değil çekicinin
+ * ruhsatındadır.
+ */
+export type AxleLoadKind = "trailer-axle" | "coupling" | "tractor-axle";
+
+export type AxleLoadReport = {
+  code: string;
+  label: string;
+  kind: AxleLoadKind;
+  positionX: number;
+  emptyLoadKg: number;
+  payloadLoadKg: number;
+  totalLoadKg: number;
+  maxLoadKg: number;
+  utilizationPct: number;
+};
+
+/**
+ * Ağırlık dağılımının okunabilir dökümü.
+ *
+ * Bir dingil yükü tek başına anlamsızdır: hangi kütleden, hangi kaldıraçtan
+ * geldiği bilinmeden ne düzeltileceği de bilinmez. Bu rapor zinciri taşır.
+ */
+export type WeightDistributionReport = {
+  payloadKg: number;
+  trailerTareKg: number;
+  tractorTareKg: number;
+  /** Çekici + römork + yük. */
+  combinationKg: number;
+  maxCombinationKg: number | null;
+  /** Beşinci tekere binen düşey kuvvet; çekicisiz araçta boş. */
+  couplingLoadKg: number | null;
+  couplingCapacityKg: number | null;
+  /** Çekicinin kendi yüklü ağırlığı: darası + kaplin kuvveti. */
+  tractorLadenKg: number | null;
+  /** Tahrikli dingillerin **katar** içindeki payı (96/53/AT Ek I 4.1). */
+  driveAxleSharePct: number | null;
+  minDriveAxleSharePct: number | null;
+  /** Yönlendirme dingilinin **çekicinin yüklü ağırlığı** içindeki payı. */
+  steerAxleSharePct: number | null;
+  minSteerAxleSharePct: number | null;
+};
+
 export type TruckLoadValidation = {
   valid: boolean;
   violations: TruckLoadViolation[];
   payloadKg: number;
   volumeUtilizationPct: number;
   centerOfGravity: { x: number; y: number; z: number };
-  axleLoads: Array<{
-    code: string;
-    emptyLoadKg: number;
-    payloadLoadKg: number;
-    totalLoadKg: number;
-    maxLoadKg: number;
-    utilizationPct: number;
-  }>;
+  axleLoads: AxleLoadReport[];
+  weightDistribution: WeightDistributionReport;
   rehandlingRiskCount: number;
 };
 
@@ -142,6 +265,7 @@ export type TruckLoadPlanView = {
   volumeUtilizationPct: number;
   centerOfGravity: { x: number; y: number; z: number };
   axleLoads: TruckLoadValidation["axleLoads"];
+  weightDistribution: WeightDistributionReport;
   rehandlingRiskCount: number;
   violations: TruckLoadViolation[];
   placements: Array<
@@ -261,35 +385,190 @@ function orientationAllowed(unit: TruckLoadUnit, position: TruckLoadPosition): b
 }
 
 /**
- * Yükün boyuna ağırlığını komşu aks gruplarına doğrusal dağıtır.
+ * Ağırlıkları mesnetlere statik denge ile dağıtır.
  *
- * Bu bir tam süspansiyon modeli değildir; sabit araç şablonunun statik
- * reaksiyon hesabıdır. Canlı limitler uzman onaylı rule pack'ten gelmelidir.
+ * İki mesnette çözüm kesindir ve konsol yükünü de doğru verir:
+ *
+ *   R_a = W · (x_b − x) / (x_b − x_a),  R_b = W − R_a
+ *
+ * Mesnetlerin dışına düşen kütlede bu bağıntı **negatif** reaksiyon üretir ve
+ * bu fiziksel gerçektir: arka dingil grubunun arkasına konan yük kingpin'i
+ * kaldırır. Önceki uygulama böyle bir yükü en yakın mesnede kırpıyordu; bu,
+ * kingpin kuvvetini olduğundan büyük, römork dingil yükünü olduğundan küçük
+ * gösteriyordu. Tam da "arkaya yığma" davranışının tehlikesi buradan gelir,
+ * yani kırpma modeli riski gizliyordu.
+ *
+ * İkiden çok mesnette sistem statik olarak belirsizdir; komşu mesnetler
+ * arasında doğrusal paylaştırma yapılır ve uçlarda kırpılır. Bu bir
+ * yaklaşımdır ve süspansiyon dengelemesini modellemez.
  */
-function axlePayloadLoads(
-  vehicle: VehicleTemplate,
-  weightedPoints: Array<{ x: number; weightKg: number }>,
+function distributeOntoSupports(
+  supports: ReadonlyArray<{ positionX: number }>,
+  weightedPoints: ReadonlyArray<{ x: number; weightKg: number }>,
 ): number[] {
-  const axles = [...vehicle.axleGroups].sort((a, b) => a.positionX - b.positionX);
-  const loads = axles.map(() => 0);
+  const loads = supports.map(() => 0);
+  if (supports.length === 0) return loads;
+  if (supports.length === 1) {
+    for (const point of weightedPoints) loads[0] += point.weightKg;
+    return loads;
+  }
+
+  if (supports.length === 2) {
+    const span = supports[1].positionX - supports[0].positionX;
+    for (const point of weightedPoints) {
+      const front = (point.weightKg * (supports[1].positionX - point.x)) / span;
+      loads[0] += front;
+      loads[1] += point.weightKg - front;
+    }
+    return loads;
+  }
 
   for (const point of weightedPoints) {
-    if (point.x <= axles[0].positionX) {
+    if (point.x <= supports[0].positionX) {
       loads[0] += point.weightKg;
       continue;
     }
-    if (point.x >= axles[axles.length - 1].positionX) {
+    if (point.x >= supports[supports.length - 1].positionX) {
       loads[loads.length - 1] += point.weightKg;
       continue;
     }
-    const rightIndex = axles.findIndex((axle) => axle.positionX >= point.x);
+    const rightIndex = supports.findIndex((support) => support.positionX >= point.x);
     const leftIndex = rightIndex - 1;
-    const span = axles[rightIndex].positionX - axles[leftIndex].positionX;
-    const rightShare = (point.x - axles[leftIndex].positionX) / span;
+    const span = supports[rightIndex].positionX - supports[leftIndex].positionX;
+    const rightShare = (point.x - supports[leftIndex].positionX) / span;
     loads[leftIndex] += point.weightKg * (1 - rightShare);
     loads[rightIndex] += point.weightKg * rightShare;
   }
   return loads;
+}
+
+/**
+ * Yükten yere kadar ağırlık zinciri.
+ *
+ * Yarı römorkta yük doğrudan dingillere binmez. Zincir iki kademelidir:
+ *
+ *   1. Römork, kingpin ve dingil grubuna oturan bir kiriştir. Yük bu iki
+ *      mesnede dağılır.
+ *   2. Kingpin'e düşen kuvvet beşinci teker üzerinden çekiciye geçer ve
+ *      orada yönlendirme ile tahrik dingiline dağılır.
+ *
+ * Eski model kingpin'i bir dingil sayıyordu; bu, çekicinin ruhsatındaki asıl
+ * yasal sınırları hiç görmemek demekti. Tahrik dingili sınırı pratikte çoğu
+ * seferde bağlayıcı olan kısıttır.
+ */
+export function computeWeightDistribution(
+  vehicle: VehicleTemplate,
+  weightedPoints: ReadonlyArray<{ x: number; weightKg: number }>,
+): { axleLoads: AxleLoadReport[]; report: WeightDistributionReport } {
+  const trailerGroups = [...vehicle.axleGroups].sort(
+    (a, b) => a.positionX - b.positionX,
+  );
+  const payloadKg = weightedPoints.reduce((sum, point) => sum + point.weightKg, 0);
+  const trailerPayload = distributeOntoSupports(trailerGroups, weightedPoints);
+
+  const trailerReports: AxleLoadReport[] = trailerGroups.map((group, index) => {
+    const totalLoadKg = group.emptyLoadKg + trailerPayload[index];
+    return {
+      code: group.code,
+      label: group.label,
+      kind: group.coupling ? "coupling" : "trailer-axle",
+      positionX: group.positionX,
+      emptyLoadKg: round(group.emptyLoadKg, 1),
+      payloadLoadKg: round(trailerPayload[index], 1),
+      totalLoadKg: round(totalLoadKg, 1),
+      maxLoadKg: group.maxLoadKg,
+      utilizationPct: round((totalLoadKg / group.maxLoadKg) * 100, 1),
+    };
+  });
+
+  const trailerTareKg = trailerGroups.reduce(
+    (sum, group) => sum + group.emptyLoadKg,
+    0,
+  );
+  const couplingIndex = trailerGroups.findIndex((group) => group.coupling);
+  const coupling = couplingIndex >= 0 ? trailerGroups[couplingIndex] : null;
+  const couplingLoadKg =
+    coupling === null
+      ? null
+      : coupling.emptyLoadKg + trailerPayload[couplingIndex];
+
+  const tractor = vehicle.tractor;
+  const tractorReports: AxleLoadReport[] = [];
+  let tractorTareKg = 0;
+
+  if (tractor && coupling && couplingLoadKg !== null) {
+    const tractorAxles = [...tractor.axles].sort((a, b) => a.positionX - b.positionX);
+    // Kaplin kuvveti çekici üzerinde tek bir noktasal yüktür.
+    const fromCoupling = distributeOntoSupports(tractorAxles, [
+      { x: coupling.positionX, weightKg: couplingLoadKg },
+    ]);
+    tractorTareKg = tractorAxles.reduce((sum, axle) => sum + axle.tareLoadKg, 0);
+
+    tractorAxles.forEach((axle, index) => {
+      const totalLoadKg = axle.tareLoadKg + fromCoupling[index];
+      tractorReports.push({
+        code: axle.code,
+        label: axle.label,
+        kind: "tractor-axle",
+        positionX: axle.positionX,
+        emptyLoadKg: round(axle.tareLoadKg, 1),
+        payloadLoadKg: round(fromCoupling[index], 1),
+        totalLoadKg: round(totalLoadKg, 1),
+        maxLoadKg: axle.maxLoadKg,
+        utilizationPct: round((totalLoadKg / axle.maxLoadKg) * 100, 1),
+      });
+    });
+  }
+
+  // Rapor sırası fiziksel sıradır: yönlendirme dingilinden arka kapıya.
+  const axleLoads = [...tractorReports, ...trailerReports].sort(
+    (a, b) => a.positionX - b.positionX,
+  );
+
+  const combinationKg = payloadKg + trailerTareKg + tractorTareKg;
+  const drivenTotal = tractor
+    ? tractorReports
+        .filter((report) =>
+          tractor.axles.some((axle) => axle.code === report.code && axle.driven),
+        )
+        .reduce((sum, report) => sum + report.totalLoadKg, 0)
+    : null;
+  const steerTotal = tractor
+    ? tractorReports
+        .filter((report) =>
+          tractor.axles.some((axle) => axle.code === report.code && axle.steering),
+        )
+        .reduce((sum, report) => sum + report.totalLoadKg, 0)
+    : null;
+
+  const tractorLadenKg =
+    couplingLoadKg === null || !tractor ? null : tractorTareKg + couplingLoadKg;
+  const share = (load: number | null, base: number | null) =>
+    load === null || base === null || base <= 0 ? null : round((load / base) * 100, 1);
+
+  return {
+    axleLoads,
+    report: {
+      payloadKg: round(payloadKg, 1),
+      trailerTareKg: round(trailerTareKg, 1),
+      tractorTareKg: round(tractorTareKg, 1),
+      combinationKg: round(combinationKg, 1),
+      maxCombinationKg: vehicle.regulation?.maxCombinationWeightKg ?? null,
+      couplingLoadKg: couplingLoadKg === null ? null : round(couplingLoadKg, 1),
+      couplingCapacityKg: coupling?.maxLoadKg ?? null,
+      tractorLadenKg: tractorLadenKg === null ? null : round(tractorLadenKg, 1),
+      driveAxleSharePct: share(drivenTotal, combinationKg),
+      minDriveAxleSharePct:
+        vehicle.regulation?.minDriveAxleShare === undefined
+          ? null
+          : round(vehicle.regulation.minDriveAxleShare * 100, 1),
+      steerAxleSharePct: share(steerTotal, tractorLadenKg),
+      minSteerAxleSharePct:
+        vehicle.regulation?.minSteerAxleShare === undefined
+          ? null
+          : round(vehicle.regulation.minSteerAxleShare * 100, 1),
+    },
+  };
 }
 
 /** Solver çıktısından bağımsız truck-load doğrulama kapısı. */
@@ -462,7 +741,22 @@ export function validateTruckLoadPlan(plan: TruckLoadPlan): TruckLoadValidation 
     );
   }
 
-  let axleLoads: TruckLoadValidation["axleLoads"] = [];
+  let axleLoads: AxleLoadReport[] = [];
+  let weightDistribution: WeightDistributionReport = {
+    payloadKg: round(payloadKg, 1),
+    trailerTareKg: 0,
+    tractorTareKg: 0,
+    combinationKg: round(payloadKg, 1),
+    maxCombinationKg: vehicle.regulation?.maxCombinationWeightKg ?? null,
+    couplingLoadKg: null,
+    couplingCapacityKg: null,
+    tractorLadenKg: null,
+    driveAxleSharePct: null,
+    minDriveAxleSharePct: null,
+    steerAxleSharePct: null,
+    minSteerAxleSharePct: null,
+  };
+
   const sortedAxles = [...vehicle.axleGroups].sort((a, b) => a.positionX - b.positionX);
   if (
     sortedAxles.length < 2 ||
@@ -471,35 +765,87 @@ export function validateTruckLoadPlan(plan: TruckLoadPlan): TruckLoadValidation 
         axle.positionX < 0 ||
         axle.positionX > vehicle.internalLengthM ||
         (index > 0 && Math.abs(axle.positionX - sortedAxles[index - 1].positionX) <= EPSILON),
-    )
+    ) ||
+    // Çekicisi olan araçta kaplin işaretlenmiş olmalı; aksi hâlde kingpin
+    // kuvveti bir dingil yükü sanılır ve çekici hiç hesaba girmez.
+    (vehicle.tractor !== undefined &&
+      (sortedAxles.filter((axle) => axle.coupling).length !== 1 ||
+        vehicle.tractor.axles.length < 2))
   ) {
-    add("invalid-axle-layout", [], "Araç şablonunda en az iki farklı ve geçerli aks konumu olmalı.");
+    add(
+      "invalid-axle-layout",
+      [],
+      "Araç şablonunda en az iki farklı dingil konumu, çekicili araçta tek bir kaplin ve en az iki çekici dingili olmalı.",
+    );
   } else {
-    const payloadLoads = axlePayloadLoads(
+    const distribution = computeWeightDistribution(
       vehicle,
       knownPositions.map((entry) => ({
         x: entry.position.x + entry.position.lengthM / 2,
         weightKg: entry.unit.grossWeightKg,
       })),
     );
-    axleLoads = sortedAxles.map((axle, index) => {
-      const totalLoadKg = axle.emptyLoadKg + payloadLoads[index];
-      if (totalLoadKg > axle.maxLoadKg + EPSILON) {
+    axleLoads = distribution.axleLoads;
+    weightDistribution = distribution.report;
+    const unitCodes = knownPositions.map((entry) => entry.unit.code);
+
+    for (const axle of axleLoads) {
+      if (axle.totalLoadKg <= axle.maxLoadKg + EPSILON) continue;
+      // Kaplin aşımı bir dingil aşımı değildir: beşinci tekerin düşey
+      // kapasitesi aşılıyor demektir ve çözümü de farklıdır.
+      if (axle.kind === "coupling") {
+        add(
+          "fifth-wheel-overload",
+          unitCodes,
+          `${axle.label} ${axle.totalLoadKg} kg ile beşinci tekerin ${axle.maxLoadKg} kg düşey kapasitesini aşıyor.`,
+        );
+      } else {
         add(
           "axle-overload",
-          knownPositions.map((entry) => entry.unit.code),
-          `${axle.label} ${round(totalLoadKg, 1)} kg ile ${axle.maxLoadKg} kg sınırını aşıyor.`,
+          unitCodes,
+          `${axle.label} ${axle.totalLoadKg} kg ile ${axle.maxLoadKg} kg sınırını aşıyor.`,
         );
       }
-      return {
-        code: axle.code,
-        emptyLoadKg: round(axle.emptyLoadKg, 1),
-        payloadLoadKg: round(payloadLoads[index], 1),
-        totalLoadKg: round(totalLoadKg, 1),
-        maxLoadKg: axle.maxLoadKg,
-        utilizationPct: round((totalLoadKg / axle.maxLoadKg) * 100, 1),
-      };
-    });
+    }
+
+    const report = weightDistribution;
+    if (
+      report.maxCombinationKg !== null &&
+      report.combinationKg > report.maxCombinationKg + EPSILON
+    ) {
+      add(
+        "over-combination-weight",
+        unitCodes,
+        `Katar ağırlığı ${report.combinationKg} kg ile yasal ${report.maxCombinationKg} kg sınırını aşıyor.`,
+      );
+    }
+
+    // Asgari paylar yalnız yük varken anlamlı: boş araçta dağılım aracın
+    // kendi darasından gelir ve bu bir yükleme kararı değildir.
+    if (knownPositions.length > 0) {
+      if (
+        report.driveAxleSharePct !== null &&
+        report.minDriveAxleSharePct !== null &&
+        report.driveAxleSharePct < report.minDriveAxleSharePct - EPSILON
+      ) {
+        add(
+          "drive-axle-underload",
+          unitCodes,
+          `Tahrikli dingil payı %${report.driveAxleSharePct}; asgari %${report.minDriveAxleSharePct} altında kaldığı için çekiş yetersiz.`,
+        );
+      }
+      if (
+        report.steerAxleSharePct !== null &&
+        report.minSteerAxleSharePct !== null &&
+        report.steerAxleSharePct < report.minSteerAxleSharePct - EPSILON
+      ) {
+        add(
+          "steer-axle-underload",
+          unitCodes,
+          `Yönlendirme dingili çekicinin yüklü ağırlığının %${report.steerAxleSharePct}'ini taşıyor; asgari %${report.minSteerAxleSharePct} altında kaldığı için direksiyon hâkimiyeti düşer.`,
+        );
+      }
+    }
   }
 
   const usedVolumeM3 = knownPositions.reduce(
@@ -517,6 +863,7 @@ export function validateTruckLoadPlan(plan: TruckLoadPlan): TruckLoadValidation 
     volumeUtilizationPct: round((usedVolumeM3 / internalVolumeM3) * 100, 1),
     centerOfGravity,
     axleLoads,
+    weightDistribution,
     rehandlingRiskCount,
   };
 }
@@ -540,6 +887,9 @@ export const DEFAULT_VEHICLE_TEMPLATES: readonly VehicleTemplate[] = [
       { code: "FRONT", label: "Ön aks", positionX: 1.25, emptyLoadKg: 3_000, maxLoadKg: 6_500 },
       { code: "REAR", label: "Arka aks grubu", positionX: 5.35, emptyLoadKg: 2_000, maxLoadKg: 10_500 },
     ],
+    // Rijit araçta çekici yok: dingiller doğrudan yere basar, tahrik ve
+    // yönlendirme payı kuralları uygulanmaz.
+    regulation: { maxCombinationWeightKg: 12_000 },
     obstacles: [
       { code: "WL", label: "Sol teker yuvası", x: 4.65, y: 0, z: 0, lengthM: 1.25, widthM: 0.28, heightM: 0.24 },
       { code: "WR", label: "Sağ teker yuvası", x: 4.65, y: 2.17, z: 0, lengthM: 1.25, widthM: 0.28, heightM: 0.24 },
@@ -558,9 +908,57 @@ export const DEFAULT_VEHICLE_TEMPLATES: readonly VehicleTemplate[] = [
     rearDoor: { widthM: 2.46, heightM: 2.62, sillHeightM: 1.2 },
     maxPayloadKg: 24_000,
     axleGroups: [
-      { code: "KINGPIN", label: "Kingpin reaksiyonu", positionX: 1.3, emptyLoadKg: 4_500, maxLoadKg: 12_000 },
-      { code: "TRIDEM", label: "Römork üçlü aks", positionX: 11.2, emptyLoadKg: 3_000, maxLoadKg: 27_000 },
+      {
+        code: "KINGPIN",
+        label: "Kingpin / beşinci teker",
+        positionX: 1.3,
+        emptyLoadKg: 4_500,
+        // Standart 2" kingpin ve beşinci tekerin düşey taşıma kapasitesi.
+        // Bu bir dingil sınırı değildir; yasal sınırlar çekicidedir.
+        maxLoadKg: 12_000,
+        coupling: true,
+      },
+      { code: "TRIDEM", label: "Römork üçlü aks", positionX: 11.2, emptyLoadKg: 3_000, maxLoadKg: 24_000 },
     ],
+    /*
+     * Tipik 4x2 çekici. Konumlar römorkun x ekseninde: yönlendirme dingili
+     * römorkun ön duvarının önünde kaldığı için negatiftir.
+     *
+     * Beşinci teker, tahrik dingilinin 0,4 m önüne oturur (fifth wheel lead);
+     * çekici dingil aralığı 3,7 m'dir. Bu geometri kaplin kuvvetinin
+     * yaklaşık %89'unu tahrik dingiline taşır — yükü arkaya kaydırmanın
+     * çekişi neden hızla düşürdüğü buradan gelir.
+     */
+    tractor: {
+      code: "TRACTOR-4X2",
+      label: "4x2 çekici",
+      tareKg: 7_400,
+      axles: [
+        {
+          code: "STEER",
+          label: "Çekici yönlendirme dingili",
+          positionX: -2.0,
+          tareLoadKg: 4_600,
+          maxLoadKg: 7_500,
+          driven: false,
+          steering: true,
+        },
+        {
+          code: "DRIVE",
+          label: "Çekici tahrik dingili",
+          positionX: 1.7,
+          tareLoadKg: 2_800,
+          maxLoadKg: 11_500,
+          driven: true,
+          steering: false,
+        },
+      ],
+    },
+    regulation: {
+      maxCombinationWeightKg: 40_000,
+      minDriveAxleShare: 0.25,
+      minSteerAxleShare: 0.2,
+    },
     obstacles: [],
     cogEnvelope: { minX: 3, maxX: 10.8, minY: 0.72, maxY: 1.76, maxZ: 1.55 },
     rulesVersion: "golden-vehicle-rules-v1",
@@ -576,9 +974,47 @@ export const DEFAULT_VEHICLE_TEMPLATES: readonly VehicleTemplate[] = [
     rearDoor: { widthM: 2.34, heightM: 2.58, sillHeightM: 1.2 },
     maxPayloadKg: 26_500,
     axleGroups: [
-      { code: "FRONT-SUPPORT", label: "Ön şasi desteği", positionX: 1.25, emptyLoadKg: 3_800, maxLoadKg: 13_000 },
-      { code: "REAR-SUPPORT", label: "Arka şasi aks grubu", positionX: 10.15, emptyLoadKg: 3_200, maxLoadKg: 27_000 },
+      {
+        code: "KINGPIN",
+        label: "Kingpin / beşinci teker",
+        positionX: 1.25,
+        emptyLoadKg: 3_800,
+        maxLoadKg: 12_000,
+        coupling: true,
+      },
+      { code: "TRIDEM", label: "Şasi üçlü aks", positionX: 10.15, emptyLoadKg: 3_200, maxLoadKg: 24_000 },
     ],
+    // Konteyner şasisi de yarı römorktur; aynı çekici geometrisi geçerlidir.
+    tractor: {
+      code: "TRACTOR-4X2",
+      label: "4x2 çekici",
+      tareKg: 7_400,
+      axles: [
+        {
+          code: "STEER",
+          label: "Çekici yönlendirme dingili",
+          positionX: -2.05,
+          tareLoadKg: 4_600,
+          maxLoadKg: 7_500,
+          driven: false,
+          steering: true,
+        },
+        {
+          code: "DRIVE",
+          label: "Çekici tahrik dingili",
+          positionX: 1.65,
+          tareLoadKg: 2_800,
+          maxLoadKg: 11_500,
+          driven: true,
+          steering: false,
+        },
+      ],
+    },
+    regulation: {
+      maxCombinationWeightKg: 40_000,
+      minDriveAxleShare: 0.25,
+      minSteerAxleShare: 0.2,
+    },
     obstacles: [],
     cogEnvelope: { minX: 2.6, maxX: 9.6, minY: 0.68, maxY: 1.67, maxZ: 1.55 },
     rulesVersion: "golden-vehicle-rules-v1",

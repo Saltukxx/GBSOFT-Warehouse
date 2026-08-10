@@ -119,6 +119,7 @@ describe.skipIf(!ready)("rota-duyarlı truck-load hattı", () => {
     expect(plan.rehandlingRiskCount).toBe(0);
     expect(plan.placements).toHaveLength(12);
     expect(plan.axleLoads.length).toBeGreaterThanOrEqual(2);
+    expect(plan.weightDistribution.combinationKg).toBeGreaterThan(plan.payloadKg);
     expect(runBody.hardViolations).toBe(0);
     expect(runBody.planId).toBe(plan.code);
   });

@@ -103,7 +103,10 @@ export function LoadStudioPage() {
                   {
                     label: "Toplam yük",
                     value: `${plan.payloadKg.toFixed(1)} kg`,
-                    context: `${plan.vehicle.maxPayloadKg.toFixed(0)} kg kapasite.`,
+                    context:
+                      plan.weightDistribution.maxCombinationKg === null
+                        ? `${plan.vehicle.maxPayloadKg.toFixed(0)} kg kapasite.`
+                        : `Katar ${plan.weightDistribution.combinationKg.toFixed(0)} / ${plan.weightDistribution.maxCombinationKg.toFixed(0)} kg.`,
                   },
                   {
                     label: "Yeniden elleçleme",

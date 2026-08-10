@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeWeightDistribution,
   DEFAULT_VEHICLE_TEMPLATES,
   validateTruckLoadPlan,
   type TruckLoadPlan,
@@ -245,5 +246,141 @@ describe("truck-load bağımsız doğrulayıcı", () => {
     expect(JSON.stringify(validateTruckLoadPlan(plan))).toBe(
       JSON.stringify(validateTruckLoadPlan(plan)),
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* İki kademeli ağırlık zinciri                                        */
+/* ------------------------------------------------------------------ */
+
+describe("computeWeightDistribution", () => {
+  const SEMI = DEFAULT_VEHICLE_TEMPLATES.find((item) => item.code === "SEMI-13M6")!;
+
+  it("kingpin kuvvetini çekici dingillerine kaldıraç oranıyla dağıtır", () => {
+    // Tek bir nokta yük, kingpin ile tridem tam ortasında: pay yarı yarıya.
+    const midX = (1.3 + 11.2) / 2;
+    const { axleLoads, report } = computeWeightDistribution(SEMI, [
+      { x: midX, weightKg: 10_000 },
+    ]);
+
+    const by = (code: string) => axleLoads.find((axle) => axle.code === code)!;
+    expect(by("KINGPIN").payloadLoadKg).toBeCloseTo(5_000, 1);
+    expect(by("TRIDEM").payloadLoadKg).toBeCloseTo(5_000, 1);
+
+    // Kaplin kuvveti = römork darasının kingpin payı + yükün kingpin payı.
+    const coupling = 4_500 + 5_000;
+    expect(report.couplingLoadKg).toBeCloseTo(coupling, 1);
+
+    // Çekici kirişi: kingpin 1,3 · yönlendirme −2,0 · tahrik 1,7.
+    // Tahrik payı = (1,3 − (−2,0)) / (1,7 − (−2,0)) = 3,3 / 3,7.
+    const driveShare = 3.3 / 3.7;
+    expect(by("DRIVE").payloadLoadKg).toBeCloseTo(coupling * driveShare, 1);
+    expect(by("STEER").payloadLoadKg).toBeCloseTo(coupling * (1 - driveShare), 1);
+    expect(by("DRIVE").totalLoadKg).toBeCloseTo(2_800 + coupling * driveShare, 1);
+    expect(by("STEER").totalLoadKg).toBeCloseTo(4_600 + coupling * (1 - driveShare), 1);
+  });
+
+  it("katar ağırlığını çekici ve römork darasıyla birlikte toplar", () => {
+    const { report } = computeWeightDistribution(SEMI, [{ x: 6, weightKg: 12_000 }]);
+    // Römork darası 4.500 + 3.000; çekici darası 4.600 + 2.800.
+    expect(report.trailerTareKg).toBeCloseTo(7_500, 1);
+    expect(report.tractorTareKg).toBeCloseTo(7_400, 1);
+    expect(report.combinationKg).toBeCloseTo(12_000 + 7_500 + 7_400, 1);
+    expect(report.maxCombinationKg).toBe(40_000);
+  });
+
+  it("yere basan dingillerin toplamı katar ağırlığına eşittir", () => {
+    // Korunum kontrolü: kaplin yere basmaz, iki kez sayılmamalı.
+    const { axleLoads, report } = computeWeightDistribution(SEMI, [
+      { x: 4, weightKg: 6_000 },
+      { x: 9, weightKg: 9_000 },
+    ]);
+    const grounded = axleLoads
+      .filter((axle) => axle.kind !== "coupling")
+      .reduce((sum, axle) => sum + axle.totalLoadKg, 0);
+    expect(grounded).toBeCloseTo(report.combinationKg, 0);
+  });
+
+  it("çekicisiz araçta dingiller doğrudan yere basar", () => {
+    const rigid = DEFAULT_VEHICLE_TEMPLATES.find((item) => item.code === "RIGID-12T")!;
+    const { axleLoads, report } = computeWeightDistribution(rigid, [
+      { x: 3, weightKg: 4_000 },
+    ]);
+    expect(axleLoads.every((axle) => axle.kind === "trailer-axle")).toBe(true);
+    expect(report.couplingLoadKg).toBeNull();
+    expect(report.driveAxleSharePct).toBeNull();
+  });
+});
+
+describe("dingil regülasyonu", () => {
+  const SEMI = DEFAULT_VEHICLE_TEMPLATES.find((item) => item.code === "SEMI-13M6")!;
+
+  function semiPlan(unitX: number, weightKg: number): TruckLoadPlan {
+    return {
+      vehicle: SEMI,
+      units: [
+        {
+          code: "U1",
+          lengthM: 1.2,
+          widthM: 0.8,
+          heightM: 1.45,
+          grossWeightKg: weightKg,
+          stopCode: "S1",
+          stopSeq: 1,
+          rotation: "yaw",
+          floorOnly: true,
+        },
+      ],
+      positions: [
+        {
+          unitCode: "U1",
+          x: unitX,
+          y: 0.8,
+          z: 0,
+          lengthM: 1.2,
+          widthM: 0.8,
+          heightM: 1.45,
+          seq: 1,
+        },
+      ],
+    };
+  }
+
+  it("yük öne yığıldığında tahrik dingilini aşırı yükler", () => {
+    // Kingpin'e yakın ağır yük kaplin kuvvetini büyütür; kuvvetin %89'u
+    // tahrik dingiline gider ve 11.500 kg sınırını aşar.
+    const codes = validateTruckLoadPlan(semiPlan(1.4, 12_000)).violations.map(
+      (violation) => violation.code,
+    );
+    expect(codes).toContain("axle-overload");
+  });
+
+  it("yük tamamen arkaya kaydığında tahrik payını asgarinin altına düşürür", () => {
+    // Eski model bunu göremezdi: dingil sınırları rahattı, ama çekiş yok.
+    const result = validateTruckLoadPlan(semiPlan(11.5, 14_000));
+    expect(result.violations.map((violation) => violation.code)).toContain(
+      "drive-axle-underload",
+    );
+    expect(result.weightDistribution.driveAxleSharePct).toBeLessThan(25);
+  });
+
+  it("kaplin aşımını dingil aşımından ayrı bildirir", () => {
+    const vehicle: VehicleTemplate = {
+      ...SEMI,
+      axleGroups: SEMI.axleGroups.map((group) =>
+        group.coupling ? { ...group, maxLoadKg: 6_000 } : group,
+      ),
+    };
+    const plan = { ...semiPlan(2, 9_000), vehicle };
+    expect(validateTruckLoadPlan(plan).violations.map((v) => v.code)).toContain(
+      "fifth-wheel-overload",
+    );
+  });
+
+  it("katar yasal ağırlığını aşan yükü bildirir", () => {
+    const codes = validateTruckLoadPlan(semiPlan(6, 26_000)).violations.map(
+      (violation) => violation.code,
+    );
+    expect(codes).toContain("over-combination-weight");
   });
 });

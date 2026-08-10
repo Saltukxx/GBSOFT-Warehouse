@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   allowedFootprints,
+  computeWeightDistribution,
   validateTruckLoadPlan,
   validatePalletPlan,
   type PalletPlacement,
@@ -10,6 +11,7 @@ import {
   type TruckLoadPlanView,
   type TruckLoadPosition,
   type TruckLoadUnit,
+  type WeightDistributionReport,
 } from "@gbsoft/domain";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -23,7 +25,7 @@ import {
   executeTruckLoadRun,
   prepareTruckLoadRun,
 } from "../truckload/runner.js";
-import { toVehicleTemplate } from "../truckload/vehicle.js";
+import { parseWeightDistribution, toVehicleTemplate } from "../truckload/vehicle.js";
 
 /**
  * Sevkiyatlar, palet planları ve rota-duyarlı araç yükleme (Faz 7.2–8.2).
@@ -427,16 +429,30 @@ export async function shipmentRoutes(app: FastifyInstance) {
       });
 
       return {
-        plans: plans.map((plan) => ({
+        plans: plans.map((plan) => {
+          const vehicle = toVehicleTemplate(plan.vehicleTemplate);
+          const stored = parseWeightDistribution(plan.weightDistribution);
+          const weightDistribution: WeightDistributionReport =
+            stored ??
+            computeWeightDistribution(
+              vehicle,
+              plan.placements.map((placement) => ({
+                x: placement.x + placement.lengthM / 2,
+                weightKg: placement.grossWeightKg,
+              })),
+            ).report;
+
+          return {
           id: plan.id,
           code: plan.code,
           runId: plan.runId,
           state: plan.state.toLowerCase() as TruckLoadPlanView["state"],
-          vehicle: toVehicleTemplate(plan.vehicleTemplate),
+          vehicle,
           payloadKg: plan.payloadKg,
           volumeUtilizationPct: plan.volumeUtilizationPct,
           centerOfGravity: { x: plan.cogX, y: plan.cogY, z: plan.cogZ },
           axleLoads: plan.axleLoads as TruckLoadPlanView["axleLoads"],
+          weightDistribution,
           rehandlingRiskCount: plan.rehandlingRiskCount,
           violations: plan.violations as TruckLoadPlanView["violations"],
           placements: plan.placements.map((placement) => ({
@@ -455,7 +471,8 @@ export async function shipmentRoutes(app: FastifyInstance) {
             locked: placement.locked,
           })),
           createdAt: plan.createdAt.toISOString(),
-        })),
+          };
+        }),
       };
     },
   );
@@ -555,6 +572,7 @@ export async function shipmentRoutes(app: FastifyInstance) {
             cogY: validation.centerOfGravity.y,
             cogZ: validation.centerOfGravity.z,
             axleLoads: json(validation.axleLoads),
+            weightDistribution: json(validation.weightDistribution),
             rehandlingRiskCount: validation.rehandlingRiskCount,
             violations: json(validation.violations),
             validatedAt: new Date(),
@@ -571,6 +589,7 @@ export async function shipmentRoutes(app: FastifyInstance) {
           volumeUtilizationPct: validation.volumeUtilizationPct,
           centerOfGravity: validation.centerOfGravity,
           axleLoads: validation.axleLoads,
+          weightDistribution: validation.weightDistribution,
           rehandlingRiskCount: validation.rehandlingRiskCount,
         },
         placement: {

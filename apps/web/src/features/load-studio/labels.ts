@@ -1,4 +1,8 @@
-import type { LoadExecutionView, TruckLoadPlanView } from "@gbsoft/domain";
+import type {
+  AxleLoadKind,
+  LoadExecutionView,
+  TruckLoadPlanView,
+} from "@gbsoft/domain";
 
 /**
  * Alan adlarının ekrandaki karşılıkları.
@@ -12,6 +16,12 @@ export const STATE_LABEL: Record<TruckLoadPlanView["state"], string> = {
   validated: "Sağlıklı",
   rejected: "Kritik",
   published: "Yayınlandı",
+};
+
+export const AXLE_KIND_LABEL: Record<AxleLoadKind, string> = {
+  "trailer-axle": "Römork dingili",
+  coupling: "Kaplin / beşinci teker",
+  "tractor-axle": "Çekici dingili",
 };
 
 export const EXECUTION_LABEL: Record<LoadExecutionView["state"], string> = {
