@@ -266,7 +266,13 @@ export function PalletStudioPage() {
             action={
               shipmentId ? (
                 <button type="button" className="btn btn--primary" disabled={busy} onClick={optimize}>
-                  {busy ? "Çözülüyor…" : lockedCount > 0 ? "Kilitlerle yeniden çöz" : plan ? "Planı yeniden üret" : "Palet planı oluştur"}
+                  {busy
+                    ? "Çözülüyor…"
+                    : lockedCount > 0
+                      ? "Kilitlerle yeniden çöz"
+                      : plan
+                        ? "Planı yeniden üret"
+                        : "Palet planı oluştur"}
                 </button>
               ) : null
             }
@@ -304,10 +310,26 @@ export function PalletStudioPage() {
             <>
               <MetricStrip
                 metrics={[
-                  { label: "Hacim doluluğu", value: `%${plan.volumeUtilizationPct.toFixed(1)}`, context: "Kullanılabilir yük zarfına göre." },
-                  { label: "Taban doluluğu", value: `%${plan.footprintUtilizationPct.toFixed(1)}`, context: "Güverteye oturan alan." },
-                  { label: "Yük", value: `${plan.usedWeightKg.toFixed(1)} kg`, context: `${plan.base.maxWeightKg.toFixed(0)} kg kapasite.` },
-                  { label: "Yükseklik", value: `${(plan.usedHeightM + plan.base.deckHeightM).toFixed(2)} m`, context: `${plan.base.maxHeightM.toFixed(2)} m sınır.` },
+                  {
+                    label: "Hacim doluluğu",
+                    value: `%${plan.volumeUtilizationPct.toFixed(1)}`,
+                    context: "Kullanılabilir yük zarfına göre.",
+                  },
+                  {
+                    label: "Taban doluluğu",
+                    value: `%${plan.footprintUtilizationPct.toFixed(1)}`,
+                    context: "Güverteye oturan alan.",
+                  },
+                  {
+                    label: "Yük",
+                    value: `${plan.usedWeightKg.toFixed(1)} kg`,
+                    context: `${plan.base.maxWeightKg.toFixed(0)} kg kapasite.`,
+                  },
+                  {
+                    label: "Yükseklik",
+                    value: `${(plan.usedHeightM + plan.base.deckHeightM).toFixed(2)} m`,
+                    context: `${plan.base.maxHeightM.toFixed(2)} m sınır.`,
+                  },
                 ]}
               />
 
@@ -361,7 +383,14 @@ export function PalletStudioPage() {
                         setVisibleThroughSeq(Number(event.target.value));
                       }}
                     />
-                    <span className="mono text-xs">{plan.placements.filter((p) => p.seq <= visibleThroughSeq).length}/{plan.placements.length}</span>
+                    <span className="mono text-xs">
+                      {
+                        plan.placements.filter(
+                          (placement) => placement.seq <= visibleThroughSeq,
+                        ).length
+                      }
+                      /{plan.placements.length}
+                    </span>
                   </div>
                 </section>
 
@@ -379,7 +408,13 @@ export function PalletStudioPage() {
                         <dl className="palletstudio__facts">
                           <div><dt>Durak</dt><dd>{selectedPlacement.stopCode ?? "—"}</dd></div>
                           <div><dt>Sıra / katman</dt><dd>{selectedPlacement.seq} / {selectedPlacement.layer}</dd></div>
-                          <div><dt>Ölçü</dt><dd>{selectedPlacement.lengthM} × {selectedPlacement.widthM} × {selectedPlacement.heightM} m</dd></div>
+                          <div>
+                            <dt>Ölçü</dt>
+                            <dd>
+                              {selectedPlacement.lengthM} × {selectedPlacement.widthM} ×{" "}
+                              {selectedPlacement.heightM} m
+                            </dd>
+                          </div>
                           <div><dt>Ağırlık</dt><dd>{selectedPlacement.grossWeightKg.toFixed(1)} kg</dd></div>
                         </dl>
                         <fieldset className="palletstudio__coordinates" disabled={busy}>
@@ -399,7 +434,16 @@ export function PalletStudioPage() {
                         </fieldset>
                         <div className="palletstudio__actions">
                           <button type="button" className="btn btn--primary" disabled={busy} onClick={savePosition}>Konumu uygula</button>
-                          <button type="button" className="btn" disabled={busy} onClick={() => void edit({ rotateYaw: true }, "Birim yatay eksende döndürüldü.")}>90° döndür</button>
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={busy}
+                            onClick={() =>
+                              void edit({ rotateYaw: true }, "Birim yatay eksende döndürüldü.")
+                            }
+                          >
+                            90° döndür
+                          </button>
                           <button
                             type="button"
                             className="btn"
@@ -454,7 +498,10 @@ export function PalletStudioPage() {
                   </ul>
                 </Panel>
               ) : (
-                <Note tone="positive">Plan; sınır, çakışma, destek, istif, ağırlık merkezi ve yükleme sırası kontrollerinden geçti.</Note>
+                <Note tone="positive">
+                  Plan; sınır, çakışma, destek, istif, ağırlık merkezi ve yükleme sırası
+                  kontrollerinden geçti.
+                </Note>
               )}
             </>
           ) : null}
