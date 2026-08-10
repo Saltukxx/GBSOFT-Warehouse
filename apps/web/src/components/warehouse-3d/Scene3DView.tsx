@@ -4,6 +4,7 @@ import { ContactShadows, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { Box3D, BayVolume, Scene3D, Vec3 } from "@gbsoft/domain";
 import type { LayerDef } from "../warehouse-map/layers";
+import { StudioCameraRig } from "../three/StudioCameraRig";
 import {
   FLOOR_COLORS,
   SCENE_PALETTE,
@@ -145,6 +146,11 @@ function Bays({
     [bays, selectedCode],
   );
 
+  // Sahne kapanırken imleç işaretçide kalmasın.
+  useEffect(() => () => {
+    document.body.style.cursor = "";
+  }, []);
+
   return (
     <group>
       <instancedMesh
@@ -156,9 +162,16 @@ function Bays({
         onPointerMove={(event) => {
           event.stopPropagation();
           const index = event.instanceId;
+          // Gözün tıklanabilir olduğunu söyleyen tek işaret imleç: instanced
+          // mesh'te hover için ayrı bir vurgu çizmek 96 gözü tek tek çizmek
+          // demek olurdu.
+          document.body.style.cursor = "pointer";
           onHover(index === undefined ? null : (bays[index]?.locationCode ?? null));
         }}
-        onPointerOut={() => onHover(null)}
+        onPointerOut={() => {
+          document.body.style.cursor = "";
+          onHover(null);
+        }}
         onClick={(event) => {
           event.stopPropagation();
           const index = event.instanceId;
@@ -618,74 +631,6 @@ function RouteReplay({
 /* Sahne                                                               */
 /* ------------------------------------------------------------------ */
 
-/**
- * Sahnenin tamamının kadraja girdiği kamera uzaklığı.
- *
- * Sınırlayıcı küre kullanmıyoruz: depo yassı ve geniştir (143 × 65 × 5 m),
- * küre bu kutuyu fena hâlde şişirir ve sahne ekranın ortasında minicik kalır.
- * Bunun yerine kutunun ekrana düşen izdüşümü ölçülür — yatayda genişlik,
- * düşeyde derinliğin eğimli izdüşümü artı bina yüksekliği.
- */
-function fitDistance(
-  scene: Scene3D,
-  fovDeg: number,
-  aspect: number,
-  direction: THREE.Vector3,
-): number {
-  const vertical = (fovDeg * Math.PI) / 180;
-  const horizontal = 2 * Math.atan(Math.tan(vertical / 2) * aspect);
-
-  const elevation = Math.asin(Math.min(1, Math.max(-1, direction.y)));
-  const halfWidth = scene.bounds.widthM / 2;
-  const projectedHalfHeight =
-    (scene.bounds.depthM / 2) * Math.sin(elevation) +
-    scene.bounds.clearHeightM * Math.cos(elevation);
-
-  return (
-    Math.max(
-      projectedHalfHeight / Math.tan(vertical / 2),
-      halfWidth / Math.tan(horizontal / 2),
-    ) * 1.12
-  );
-}
-
-/**
- * Kamerayı sahne ölçüsüne ve seçilen hazır açıya göre konumlar.
- *
- * Sabit bir uzaklık yazılamaz: tesis 96 gözlük de olabilir, on katı da.
- * Uzaklık sahnenin kendi sınırlarından hesaplanır.
- */
-function CameraRig({
-  scene,
-  preset,
-}: {
-  scene: Scene3D;
-  preset: CameraPreset;
-}) {
-  const { camera, size, controls } = useThree();
-
-  useEffect(() => {
-    const perspective = camera as THREE.PerspectiveCamera;
-    const aspect = size.height > 0 ? size.width / size.height : 1.6;
-    const direction = new THREE.Vector3(...PRESET_DIRECTIONS[preset]).normalize();
-    const distance = fitDistance(scene, perspective.fov ?? 42, aspect, direction);
-
-    camera.position.copy(direction.multiplyScalar(distance));
-    camera.lookAt(0, 0, 0);
-    perspective.far = distance * 4;
-    perspective.updateProjectionMatrix();
-
-    // Kullanıcı kamerayı çevirdiyse OrbitControls kendi hedefini tutar;
-    // hazır açıya dönerken hedef de merkeze alınmalı.
-    const orbit = controls as { target?: THREE.Vector3; update?: () => void } | null;
-    orbit?.target?.set(0, 0, 0);
-    orbit?.update?.();
-    invalidate();
-  }, [camera, scene, size.width, size.height, preset, controls]);
-
-  return null;
-}
-
 /** Yerel kırpma bir renderer ayarıdır; sahne kurulunca bir kez açılır. */
 function EnableClipping() {
   const { gl } = useThree();
@@ -738,7 +683,21 @@ function SceneContents(props: Scene3DViewProps) {
   return (
     <>
       <EnableClipping />
-      <CameraRig scene={scene} preset={props.cameraPreset ?? "iso"} />
+      {/*
+        Kadraj sahnenin kendi sınırlarından hesaplanır: tesis 96 gözlük de
+        olabilir, on katı da. Hazır açı değişince kamera ışınlanmıyor, hedefe
+        süzülüyor — hangi açıdan hangi açıya geçildiği gözle takip edilebilsin.
+      */}
+      <StudioCameraRig
+        bounds={{
+          lengthM: scene.bounds.widthM,
+          heightM: scene.bounds.clearHeightM,
+          widthM: scene.bounds.depthM,
+        }}
+        target={[0, 0, 0]}
+        direction={PRESET_DIRECTIONS[props.cameraPreset ?? "iso"]}
+        resetKey={props.cameraPreset ?? "iso"}
+      />
       <ambientLight intensity={1.15} />
       <directionalLight position={[40, 90, 60]} intensity={1.5} />
       <directionalLight position={[-60, 50, -40]} intensity={0.5} />
