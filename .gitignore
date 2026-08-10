@@ -36,6 +36,10 @@ venv/
 # npm run export:csv çıktısı — golden dataset'ten her an yeniden üretilir
 seed-csv/
 
+# Geçici çalışma alanı ve üretilen rapor çıktıları
+tmp/
+output/
+
 # Editör ve işletim sistemi
 .DS_Store
 .idea/
