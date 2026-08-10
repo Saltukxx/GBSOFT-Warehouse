@@ -275,6 +275,21 @@ describe("palet doğrulayıcı", () => {
     expect(result.violations.map((v) => v.code)).toContain("unknown-package-type");
   });
 
+  it("paket profilinin izin vermediği yönelimi reddeder", () => {
+    const result = validatePalletPlan(
+      plan([
+        box("A", 1, 0, 0, 0, {
+          packageTypeCode: "CASE-FRAGILE",
+          lengthM: 0.4,
+          widthM: 0.6,
+        }),
+      ]),
+      TYPES,
+    );
+
+    expect(result.violations.map((v) => v.code)).toContain("invalid-orientation");
+  });
+
   it("boş palet geçerlidir ve ölçüleri sıfırdır", () => {
     const result = validatePalletPlan(plan([]), TYPES);
 

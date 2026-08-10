@@ -50,6 +50,86 @@ Kararlaştırılan kapsam:
 
 ### Faz 8 — Route-Aware Truck Loading ve Execution
 
+Uygulama sırası ve bağımsız çıkış koşulları:
+
+1. **8.1 — Araç şablonları + bağımsız doğrulayıcı:** ölçü, kapı, engel,
+   toplam/aks yükü, CoG ve durak erişimini saf alan motoru yeniden hesaplar.
+2. **8.2 — Solver + kalıcı API:** rota-duyarlı yerleşim, precedence sırası,
+   `OptimizationRun(TRUCK_LOAD)` ve sürümlü `LoadPlan` kayıtları.
+3. **8.3 — 3B Load Studio:** section view, stop/SKU rengi, aks grafiği,
+   replay ve move/rotate/lock sonrası warm-start.
+4. **8.4 — Execution:** barkod/SSCC teyidi, eksik/hasarlı yükte sapma
+   replanı, mobil/basılabilir talimat ve Faz 9'a kadar shadow publish.
+
+#### Faz 8.1 teslim kaydı
+
+- `VehicleTemplate` kiracı bazında kalıcıdır; iç hacim, arka kapı,
+  engeller, aks grupları, taşıma kapasitesi ve güvenli CoG zarfını taşır.
+- `GET /api/vehicle-templates` ve `GET /api/vehicle-templates/:code`
+  aynı sürümlü sözleşmeyi sunar.
+- Solver'dan bağımsız doğrulayıcı; sınır/kapı/engel/çakışma,
+  toplam ve aks yükü, CoG, rota erişimi ve yükleme önceliğini yeniden
+  hesaplar. İhlalli plan yayınlanabilir sayılmaz.
+- Başlangıçtaki `RIGID-12T`, `SEMI-13M6` ve `ISO-40HC` şablonları
+  `golden-assumption` etiketlidir; üretici belgesi veya saha ölçümü yerine
+  geçmez.
+
+#### Faz 8.2 teslim kaydı
+
+- `POST /api/shipments/:id/truck-load` sabit rotayı değiştirmeden bir
+  `TRUCK_LOAD` optimizasyon koşusu başlatır; araç şablonu ve tüm yük
+  birimleri değişmez input snapshot'ında saklanır.
+- Deterministik route-band sezgiseli son durak yüklerini ön/derin bölgeye
+  ve ilk yükleme adımlarına; ilk durak yüklerini arka kapıya ve son
+  adımlara koyar. Sonuç için optimumluk iddiası yapılmaz.
+- Solver araç içindeki boyuna ofseti aks limitleri, CoG zarfı ve engelleri
+  birlikte sağlayacak biçimde arar. Bulamazsa neden ve gevşetme seçeneğiyle
+  `infeasible` döner.
+- Solver sonucu doğrudan onaylanmaz; Faz 8.1 doğrulayıcısı geometri,
+  ağırlık ve rota erişimini yeniden hesaplar. Plan ancak bundan sonra
+  `VALIDATED` olabilir.
+- `GET /api/shipments/:id/load-plans` eski koşuları silmeden sürümlü plan,
+  yerleşim, aks yükü, CoG, doluluk ve ihlal kaydını döner.
+
+#### Faz 8.3 teslim kaydı
+
+- `/operations/loading` sevkiyat, araç şablonu ve plan sürümünü aynı çalışma
+  alanında birleştirir. Yeni plan ile kilitleri koruyan warm-start ayrı
+  eylemlerdir.
+- 3B araç görünümü durak bazlı renk, section view, engel/aks geometrisi,
+  CoG işareti ve yükleme sırası replay'i sunar. WebGL yoksa aynı yerleşim 2B
+  üst görünümle okunabilir.
+- Hacim, toplam yük, yeniden elleçleme, aks kullanımı ve CoG değerleri planın
+  bağımsız doğrulama sonucuyla birlikte gösterilir; golden araç geometrisi
+  uyarısı arayüzde kaybolmaz.
+- `PATCH /api/load-plans/:planId/placements/:huCode` move/rotate/lock
+  değişikliğini kalıcılaştırır ve planı her değişiklikten sonra bağımsız
+  doğrulayıcıdan yeniden geçirir. Kilitli pozlar sonraki çözümde
+  `fixed_placements` olarak tam koordinatlarıyla korunur.
+- Tarayıcı doğrulamasında plan üretme, seçim/editör, kilitleme, warm-start,
+  section view ve replay akışları gerçek API ile çalıştırıldı.
+
+#### Faz 8.4 teslim kaydı
+
+- `LoadExecution` ve `LoadScanEvent` kayıtları shadow yürütmenin durumunu,
+  idempotency anahtarını, teyit sayısını ve sapma kanıtını kalıcı tutar.
+- `POST /api/load-plans/:id/publish` yalnız bağımsız doğrulanmış planı kabul
+  eder ve açıkça `mode: shadow` döner. Canlı WMS/TMS yazımı Faz 9 yetki kapısı
+  tamamlanana kadar yapılmaz.
+- `POST /api/load-plans/:id/scan-events` HU kodu veya SSCC'yi beklenen fiziksel
+  yükleme sırasıyla karşılaştırır; doğru, eksik, hasarlı, sıra dışı ve
+  bilinmeyen sonuçlarını idempotent olay olarak saklar.
+- `POST /api/load-plans/:id/reoptimize` teyit edilmiş yükleri mutlak
+  koordinatında sabitler, eksik/hasarlı birimleri dışarıda bırakır ve eski
+  planı silmeden yeni sürüm üretir. Solver sabit yük çevresindeki kilitsiz
+  birimleri yeniden akıtır ve CoG'yi güvenli zarfa geri dengeler; bağımsız
+  doğrulama kapısı son sözü söyler.
+- `GET /api/load-plans/:id/instructions` mobil/yazdırılabilir sıra, durak,
+  koordinat, ölçü ve ağırlık talimatını üretir. Load Studio aynı sözleşmeyi
+  yazdırma görünümünde sunar.
+- Canlı tarayıcı kabulü; shadow publish → barkod teyidi → hasarlı/eksik sapma
+  → replan → doğrulanmış yeni sürüm zinciriyle tamamlandı.
+
 - Parametrik araç şablonları: iç hacim, kapılar, teker yuvaları, engeller, aks
   grupları, toplam/aks limitleri ve CoG zarfı.
 - Araç koordinatı: `x` ön duvardan arka kapıya, `y` sol-sağ, `z` tabandan
@@ -88,9 +168,9 @@ Kararlaştırılan kapsam:
   - `GET /api/facilities/:code/scene-3d`
   - `POST /api/optimization-runs` — pallet/load run için 202 + run ID
   - `GET /api/shipments/:id/load-plans`
-  - `GET /api/load-plans/:id`
-  - `GET /api/load-plans/:id/sequence`
-  - `POST /api/load-plans/:id/positions` — move/rotate/lock
+  - `GET /api/load-plans/:id/instructions`
+  - `GET /api/load-plans/:id/execution`
+  - `PATCH /api/load-plans/:id/placements/:huCode` — move/rotate/lock
   - `POST /api/load-plans/:id/reoptimize`
   - `POST /api/load-plans/:id/publish`
   - `POST /api/load-plans/:id/scan-events`

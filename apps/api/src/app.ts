@@ -12,6 +12,8 @@ import { pickOrderRoutes } from "./routes/pickOrders.js";
 import { shipmentRoutes } from "./routes/shipments.js";
 import { planRoutes } from "./routes/plans.js";
 import { twinRoutes } from "./routes/twin.js";
+import { vehicleRoutes } from "./routes/vehicles.js";
+import { loadExecutionRoutes } from "./routes/loadExecution.js";
 import { prisma } from "./db.js";
 import { recoverOptimizationRuns } from "./optimizer/runner.js";
 
@@ -34,6 +36,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: [config.WEB_ORIGIN],
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     exposedHeaders: ["x-correlation-id"],
   });
 
@@ -53,6 +56,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(pickOrderRoutes, { prefix: "/api" });
   await app.register(shipmentRoutes, { prefix: "/api" });
   await app.register(planRoutes, { prefix: "/api" });
+  await app.register(vehicleRoutes, { prefix: "/api" });
+  await app.register(loadExecutionRoutes, { prefix: "/api" });
 
   app.addHook("onReady", async () => {
     const recovered = await recoverOptimizationRuns();

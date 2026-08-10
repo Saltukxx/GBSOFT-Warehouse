@@ -33,8 +33,9 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
 
-  facilities Facility[]
-  users      User[]
+  facilities       Facility[]
+  users            User[]
+  vehicleTemplates VehicleTemplate[]
 }
 
 enum UserRole {
@@ -327,7 +328,7 @@ model GraphEdge {
 
 /// Dock, staging, packing gibi raf dışı alanlar — harita bağlamı.
 model FloorArea {
-  id              String @id @default(cuid())
+  id              String   @id @default(cuid())
   tenantId        String
   layoutVersionId String
   code            String
@@ -619,6 +620,7 @@ enum RunKind {
   SLOT
   PICK_TOUR
   PALLET
+  TRUCK_LOAD
 }
 
 /// Her solver çağrısının değişmez kaydı: girdi snapshot'ı, kısıtlar, sürüm,
@@ -662,6 +664,48 @@ model OptimizationRun {
   resultPlan SlotPlan?
 
   @@index([tenantId, facilityId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Araç geometrisi ve güvenlik limitleri (Faz 8.1)
+// ---------------------------------------------------------------------------
+
+/// Truck-load solver ve bağımsız doğrulayıcının ortak araç sözleşmesi.
+/// Golden şablonlar saha ölçümü değildir; `geometrySource` bu ayrımı
+/// API ve arayüzde görünür tutar.
+model VehicleTemplate {
+  id              String   @id @default(cuid())
+  tenantId        String
+  code            String
+  name            String
+  /// rigid-truck | semi-trailer | iso-container
+  kind            String
+  internalLengthM Float
+  internalWidthM  Float
+  internalHeightM Float
+  rearDoorWidthM  Float
+  rearDoorHeightM Float
+  rearDoorSillM   Float
+  maxPayloadKg    Float
+  /// VehicleAxleGroup[]; konum ve boş/azami aks yükleri.
+  axleGroups      Json
+  /// VehicleObstacle[]; teker davlumbazı gibi kullanılamayan hacimler.
+  obstacles       Json
+  cogMinX         Float
+  cogMaxX         Float
+  cogMinY         Float
+  cogMaxY         Float
+  cogMaxZ         Float
+  rulesVersion    String
+  /// measured | manufacturer | golden-assumption
+  geometrySource  String
+  createdAt       DateTime @default(now())
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  loadPlans LoadPlan[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, kind])
 }
 
 // ---------------------------------------------------------------------------
@@ -730,6 +774,7 @@ model Shipment {
   lines         ShipmentLine[]
   handlingUnits HandlingUnit[]
   palletPlans   PalletPlan[]
+  loadPlans     LoadPlan[]
 
   @@unique([tenantId, facilityId, code])
   @@index([tenantId, facilityId, status])
@@ -791,13 +836,15 @@ model HandlingUnit {
   quantity      Int     @default(1)
   grossWeightKg Float
 
-  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  packageType PackageType    @relation(fields: [packageTypeId], references: [id], onDelete: Restrict)
-  parent      HandlingUnit?  @relation("HuHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children    HandlingUnit[] @relation("HuHierarchy")
-  sku         Sku?           @relation(fields: [skuId], references: [id], onDelete: Restrict)
-  stop        ShipmentStop?  @relation(fields: [stopId], references: [id], onDelete: SetNull)
-  placement   PalletPlacement?
+  shipment       Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  packageType    PackageType      @relation(fields: [packageTypeId], references: [id], onDelete: Restrict)
+  parent         HandlingUnit?    @relation("HuHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children       HandlingUnit[]   @relation("HuHierarchy")
+  sku            Sku?             @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  stop           ShipmentStop?    @relation(fields: [stopId], references: [id], onDelete: SetNull)
+  placement      PalletPlacement?
+  loadPlacements LoadPlacement[]
+  loadScanEvents LoadScanEvent[]
 
   @@unique([tenantId, code])
   @@index([tenantId, shipmentId])
@@ -869,12 +916,139 @@ model PalletPlacement {
   layer         Int
   /// Yerleştirme sırası; destekleyen kutu üstündekinden önce gelir.
   seq           Int
+  /// Editörde sabitlenen birim; yeniden çözmede fixed obstacle olur.
+  locked        Boolean @default(false)
 
   plan PalletPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
   hu   HandlingUnit @relation(fields: [huId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, planId, seq])
   @@index([tenantId, planId])
+}
+
+enum LoadPlanState {
+  DRAFT
+  /// Bağımsız truck-load doğrulayıcısından geçti.
+  VALIDATED
+  /// Solver çözüm üretti fakat bağımsız kapı ihlal buldu.
+  REJECTED
+  PUBLISHED
+}
+
+/// Tek sevkiyatın belirli araç şablonundaki sürümlü yük planı.
+/// Eski koşular silinmez; her plan `runId` ile tekrar üretilebilir.
+model LoadPlan {
+  id                   String        @id @default(cuid())
+  tenantId             String
+  shipmentId           String
+  vehicleTemplateId    String
+  runId                String
+  code                 String
+  state                LoadPlanState @default(DRAFT)
+  payloadKg            Float
+  volumeUtilizationPct Float
+  cogX                 Float
+  cogY                 Float
+  cogZ                 Float
+  axleLoads            Json
+  rehandlingRiskCount  Int
+  violations           Json
+  validatedAt          DateTime?
+  createdAt            DateTime      @default(now())
+
+  shipment        Shipment        @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  vehicleTemplate VehicleTemplate @relation(fields: [vehicleTemplateId], references: [id], onDelete: Restrict)
+  placements      LoadPlacement[]
+  execution       LoadExecution?
+
+  @@unique([tenantId, shipmentId, runId])
+  @@index([tenantId, shipmentId, createdAt])
+}
+
+model LoadPlacement {
+  id            String  @id @default(cuid())
+  tenantId      String
+  planId        String
+  huId          String
+  x             Float
+  y             Float
+  z             Float
+  lengthM       Float
+  widthM        Float
+  heightM       Float
+  grossWeightKg Float
+  /// Fiziksel yükleme sırası; 1 ilk araca giren birimdir.
+  seq           Int
+  locked        Boolean @default(false)
+
+  plan LoadPlan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  hu   HandlingUnit @relation(fields: [huId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, planId, huId])
+  @@unique([tenantId, planId, seq])
+  @@index([tenantId, planId])
+}
+
+enum LoadExecutionState {
+  SHADOW_PUBLISHED
+  LOADING
+  DEVIATED
+  COMPLETED
+}
+
+enum LoadScanOutcome {
+  CONFIRMED
+  MISSING
+  DAMAGED
+  OUT_OF_SEQUENCE
+  UNKNOWN
+}
+
+/// Faz 9 yetki kapısı tamamlanana kadar yalnız shadow/simülasyon modunda
+/// çalışan araç yükleme yürütmesi.
+model LoadExecution {
+  id                String             @id @default(cuid())
+  tenantId          String
+  planId            String             @unique
+  mode              String             @default("shadow")
+  state             LoadExecutionState @default(SHADOW_PUBLISHED)
+  idempotencyKey    String
+  currentSeq        Int                @default(0)
+  loadedCount       Int                @default(0)
+  deviationCount    Int                @default(0)
+  replacementPlanId String?
+  publishedAt       DateTime           @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  plan   LoadPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  events LoadScanEvent[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, state, updatedAt])
+}
+
+/// Operatörün okuttuğu barkod/SSCC ve plan sırasına göre türetilen sonuç.
+model LoadScanEvent {
+  id             String          @id @default(cuid())
+  tenantId       String
+  executionId    String
+  huId           String?
+  idempotencyKey String
+  scannedCode    String
+  expectedSeq    Int?
+  actualSeq      Int?
+  outcome        LoadScanOutcome
+  note           String?
+  scannedAt      DateTime        @default(now())
+
+  execution LoadExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  hu        HandlingUnit? @relation(fields: [huId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, executionId, idempotencyKey])
+  @@index([tenantId, executionId, scannedAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -936,19 +1110,19 @@ model PickOrderLine {
 
 /// Solver'ın ürettiği tek bir toplama turu.
 model PickTour {
-  id       String @id @default(cuid())
-  tenantId String
-  orderId  String
+  id             String @id @default(cuid())
+  tenantId       String
+  orderId        String
   /// Bu turu üreten çalıştırma; tekrar üretilebilirlik buna dayanır.
-  runId    String
-  seq      Int
+  runId          String
+  seq            Int
   /// manual | cart | forklift
-  equipment String
+  equipment      String
   totalDistanceM Float
   /// Modelin beklediği süre (sn). Ölçülmüş değil, tahmindir.
   estimatedSec   Float
-  volumeUsedM3   Float @default(0)
-  weightUsedKg   Float @default(0)
+  volumeUsedM3   Float  @default(0)
+  weightUsedKg   Float  @default(0)
 
   order PickOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   stops PickTourStop[]
@@ -958,16 +1132,16 @@ model PickTour {
 }
 
 model PickTourStop {
-  id           String @id @default(cuid())
-  tenantId     String
-  tourId       String
-  seq          Int
-  locationCode String
-  skuCode      String
-  quantity     Int
+  id            String @id @default(cuid())
+  tenantId      String
+  tourId        String
+  seq           Int
+  locationCode  String
+  skuCode       String
+  quantity      Int
   /// Süre bileşenleri — `estimatePickTourSec` çıktısıyla birebir.
   travelSec     Float
-  congestionSec Float @default(0)
+  congestionSec Float  @default(0)
   pickSec       Float
   cumulativeSec Float
 

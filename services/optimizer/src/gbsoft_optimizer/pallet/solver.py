@@ -32,7 +32,7 @@ from .models import (
     PlacementResult,
 )
 
-SOLVER_VERSION = "pallet-extreme-point-1.0.0"
+SOLVER_VERSION = "pallet-extreme-point-1.1.0"
 
 #: Ölçü karşılaştırma toleransı (m) — alan modelindeki değerle aynı.
 EPSILON = 1e-4
@@ -52,6 +52,7 @@ class Placed:
     seq: int
     #: Bu kutunun taşıdığı üst yük; yerleştirme ilerledikçe birikir.
     carried_kg: float = 0.0
+    locked: bool = False
 
     @property
     def top(self) -> float:
@@ -66,6 +67,8 @@ class Pallet:
         default_factory=lambda: [(0.0, 0.0, 0.0)]
     )
     weight_kg: float = 0.0
+    #: Kilitli paletin sıra numarası yeniden çözmede korunur.
+    seq_hint: int = 0
 
 
 def _orientations(profile: PackageProfile) -> List[Tuple[float, float, float]]:
@@ -276,19 +279,100 @@ def solve_palletize(request: PalletizeRequest) -> PalletizeResponse:
     base = request.base
     max_load_height = base.max_height_m - base.deck_height_m
 
+    # Kilitli yerleşimler önce tam koordinatlarında kurulur. Sonraki adaylar
+    # bunları normal birer hacim ve destekleyici olarak görür.
+    item_by_code = {item.hu_code: item for item in request.items}
+    fixed_codes = {placement.hu_code for placement in request.fixed_placements}
+    fixed_pallets: Dict[int, Pallet] = {}
+    fixed_group: Dict[int, Tuple[str, str]] = {}
+    fixed_errors: List[str] = []
+
+    for fixed in sorted(
+        request.fixed_placements,
+        key=lambda placement: (placement.pallet_seq, placement.y, placement.seq),
+    ):
+        item = item_by_code[fixed.hu_code]
+        profile = profiles[item.package_type_code]
+        group = _group_key(profile)
+        existing_group = fixed_group.setdefault(fixed.pallet_seq, group)
+        if existing_group != group:
+            fixed_errors.append(
+                f"Palet {fixed.pallet_seq} kilitleri farklı ayrım/sıcaklık gruplarında."
+            )
+            continue
+
+        orientation = (fixed.length_m, fixed.width_m, fixed.height_m)
+        allowed = any(
+            all(abs(a - b) <= EPSILON for a, b in zip(orientation, candidate))
+            for candidate in _orientations(profile)
+        )
+        if not allowed:
+            fixed_errors.append(f"{fixed.hu_code} kilidi izin verilmeyen yönelimde.")
+            continue
+
+        pallet = fixed_pallets.setdefault(
+            fixed.pallet_seq, Pallet(seq_hint=fixed.pallet_seq)
+        )
+        if not _can_place(
+            request,
+            pallet,
+            profile,
+            item.gross_weight_kg,
+            fixed.x,
+            fixed.y,
+            fixed.z,
+            fixed.length_m,
+            fixed.width_m,
+            fixed.height_m,
+        ):
+            fixed_errors.append(
+                f"{fixed.hu_code} kilidi sınır, çakışma, destek veya kapasite kuralını bozuyor."
+            )
+            continue
+        _place_at(
+            pallet,
+            item,
+            (fixed.x, fixed.y, fixed.z),
+            orientation,
+            fixed.seq,
+            locked=True,
+        )
+
+    if fixed_errors:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        return PalletizeResponse(
+            run_id=request.run_id,
+            status="infeasible",
+            solution_quality="none",
+            solver_version=SOLVER_VERSION,
+            solve_duration_ms=duration_ms,
+            unplaced_hu_codes=sorted(fixed_codes),
+            lower_bound_pallets=_lower_bound_pallets(request),
+            infeasibility_reasons=fixed_errors,
+            relaxation_options=["Çakışan kilitleri kaldırın veya editörde düzeltin."],
+            diagnostics={"items": len(request.items), "fixed": len(fixed_codes)},
+        )
+
     # Sıcaklık sınıfı ve ayrım grubu farklı olan yükler aynı palete konamaz;
     # her kombinasyon kendi palet kümesini alır.
     groups: Dict[Tuple[str, str], List[ItemInput]] = {}
     for item in request.items:
+        if item.hu_code in fixed_codes:
+            continue
         groups.setdefault(_group_key(profiles[item.package_type_code]), []).append(item)
 
-    pallets: List[Pallet] = []
+    pallets: List[Pallet] = list(fixed_pallets.values())
     unplaced: List[str] = []
-    seq = 0
+    seq = max((placement.seq for pallet in pallets for placement in pallet.placements), default=0)
+    next_pallet_seq = max(fixed_pallets, default=0)
 
     for key in sorted(groups.keys()):
         items = sorted(groups[key], key=lambda item: _sort_key(item, profiles))
-        group_pallets: List[Pallet] = []
+        group_pallets = [
+            pallet
+            for pallet_seq, pallet in fixed_pallets.items()
+            if fixed_group.get(pallet_seq) == key
+        ]
 
         for item in items:
             profile = profiles[item.package_type_code]
@@ -316,7 +400,8 @@ def solve_palletize(request: PalletizeRequest) -> PalletizeResponse:
                 break
 
             if not placed:
-                pallet = Pallet()
+                next_pallet_seq += 1
+                pallet = Pallet(seq_hint=next_pallet_seq)
                 spot = _best_spot(request, pallet, profile, item, orientations)
                 if spot is None:
                     unplaced.append(item.hu_code)
@@ -325,19 +410,18 @@ def solve_palletize(request: PalletizeRequest) -> PalletizeResponse:
                 _place(pallet, item, profile, spot, seq)
                 group_pallets.append(pallet)
 
-        pallets.extend(group_pallets)
+        pallets.extend(pallet for pallet in group_pallets if pallet not in pallets)
 
     # Yükü ortalamak yerleştirme bittikten sonra yapılır: rijit öteleme
     # göreli geometriyi bozmaz ama kısmen dolu paletin devrilme zarfını
     # düzeltir.
     for pallet in pallets:
-        _center_load(pallet, request)
+        if not any(placement.locked for placement in pallet.placements):
+            _center_load(pallet, request)
 
     duration_ms = int((time.perf_counter() - started) * 1000)
-    results = [
-        _to_result(index + 1, pallet, request)
-        for index, pallet in enumerate(pallets)
-    ]
+    ordered_pallets = sorted(pallets, key=lambda pallet: pallet.seq_hint)
+    results = [_to_result(pallet.seq_hint, pallet, request) for pallet in ordered_pallets]
 
     if not results:
         reasons, options = _infeasibility(request, unplaced)
@@ -371,6 +455,7 @@ def solve_palletize(request: PalletizeRequest) -> PalletizeResponse:
             "items": len(request.items),
             "pallets": len(results),
             "unplaced": len(unplaced),
+            "fixed": len(fixed_codes),
         },
     )
 
@@ -415,6 +500,21 @@ def _place(
 ) -> None:
     (x, y, z), (l, w, h) = spot
 
+    _place_at(pallet, item, (x, y, z), (l, w, h), seq)
+
+
+def _place_at(
+    pallet: Pallet,
+    item: ItemInput,
+    point: Tuple[float, float, float],
+    orientation: Tuple[float, float, float],
+    seq: int,
+    locked: bool = False,
+) -> None:
+    """Birimi verilen noktaya işler; kilitler de aynı fizik zincirini kullanır."""
+    x, y, z = point
+    l, w, h = orientation
+
     _apply_load(pallet, (x, y, z), l, w, item.gross_weight_kg)
 
     pallet.placements.append(
@@ -429,12 +529,13 @@ def _place(
             height_m=round(h, 4),
             gross_weight_kg=item.gross_weight_kg,
             seq=seq,
+            locked=locked,
         )
     )
     pallet.weight_kg += item.gross_weight_kg
 
-    if (x, y, z) in pallet.points:
-        pallet.points.remove((x, y, z))
+    if point in pallet.points:
+        pallet.points.remove(point)
     for candidate in ((x + l, y, z), (x, y + h, z), (x, y, z + w)):
         rounded = tuple(round(value, 4) for value in candidate)
         if rounded not in pallet.points:

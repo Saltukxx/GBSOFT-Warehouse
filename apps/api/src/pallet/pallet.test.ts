@@ -205,6 +205,87 @@ describe.skipIf(!ready)("palet planı hattı", () => {
     }
   });
 
+  it("editör kilidini saklar ve yeniden çözmede aynı konumu korur", async () => {
+    const before = await plans();
+    const sourcePlan = before.find((plan) =>
+      plan.placements.some(
+        (placement) => placement.y <= 1e-6 && placement.packageTypeCode === "CASE-STD",
+      ),
+    )!;
+    const placement = sourcePlan.placements.find(
+      (candidate) => candidate.y <= 1e-6 && candidate.packageTypeCode === "CASE-STD",
+    )!;
+
+    const edited = await app.inject({
+      method: "PATCH",
+      url: `/api/pallet-plans/${sourcePlan.id}/placements/${placement.huCode}`,
+      payload: { x: placement.x, y: placement.y, z: placement.z, locked: true },
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().placement.locked).toBe(true);
+
+    const { status } = await palletize({
+      maxHeightM: sourcePlan.base.maxHeightM,
+      maxWeightKg: sourcePlan.base.maxWeightKg,
+      keepLocked: true,
+    });
+    expect(status).toBe("feasible");
+
+    const after = await plans();
+    const preserved = after
+      .flatMap((plan) => plan.placements.map((item) => ({ plan, item })))
+      .find(({ item }) => item.huCode === placement.huCode)!;
+
+    expect(preserved.plan.seq).toBe(sourcePlan.seq);
+    expect(preserved.item.x).toBeCloseTo(placement.x, 4);
+    expect(preserved.item.y).toBeCloseTo(placement.y, 4);
+    expect(preserved.item.z).toBeCloseTo(placement.z, 4);
+    expect(preserved.item.locked).toBe(true);
+  }, 60_000);
+
+  it("üstteki kilidin fiziksel destek zincirini de sabitler", async () => {
+    const before = await plans();
+    const sourcePlan = before.find((plan) =>
+      plan.placements.some((placement) => placement.y > 1e-4),
+    )!;
+    const upper = sourcePlan.placements.find((placement) => placement.y > 1e-4)!;
+
+    const edited = await app.inject({
+      method: "PATCH",
+      url: `/api/pallet-plans/${sourcePlan.id}/placements/${upper.huCode}`,
+      payload: { locked: true },
+    });
+    expect(edited.statusCode).toBe(200);
+
+    const { status } = await palletize({
+      maxHeightM: sourcePlan.base.maxHeightM,
+      maxWeightKg: sourcePlan.base.maxWeightKg,
+      keepLocked: true,
+    });
+    expect(status).toBe("feasible");
+
+    const after = await plans();
+    const rebuilt = after.find((plan) => plan.seq === sourcePlan.seq)!;
+    const preservedUpper = rebuilt.placements.find(
+      (placement) => placement.huCode === upper.huCode,
+    )!;
+    expect(preservedUpper.y).toBeCloseTo(upper.y, 4);
+    expect(preservedUpper.locked).toBe(true);
+
+    const supporters = rebuilt.placements.filter(
+      (placement) =>
+        Math.abs(placement.y + placement.heightM - preservedUpper.y) <= 1e-4 &&
+        Math.min(placement.x + placement.lengthM, preservedUpper.x + preservedUpper.lengthM) -
+          Math.max(placement.x, preservedUpper.x) >
+          1e-4 &&
+        Math.min(placement.z + placement.widthM, preservedUpper.z + preservedUpper.widthM) -
+          Math.max(placement.z, preservedUpper.z) >
+          1e-4,
+    );
+    expect(supporters.length).toBeGreaterThan(0);
+    expect(supporters.every((placement) => placement.locked)).toBe(true);
+  }, 60_000);
+
   it("bilinmeyen paket türüyle sevkiyat açılmasına izin vermez", async () => {
     const sku = await prisma.sku.findFirst({
       where: { tenantId: TENANT_ID },

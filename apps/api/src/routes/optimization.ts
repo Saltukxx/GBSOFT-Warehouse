@@ -60,6 +60,13 @@ export async function optimizationRoutes(app: FastifyInstance) {
             select: { code: true },
           })
         : null;
+      const loadPlan =
+        run.kind === "TRUCK_LOAD"
+          ? await prisma.loadPlan.findFirst({
+              where: { tenantId: request.tenantId, runId: run.id },
+              select: { code: true },
+            })
+          : null;
       const result = (run.resultSnapshot ?? {}) as {
         objective_delta_pct?: number;
         move_count?: number;
@@ -67,7 +74,7 @@ export async function optimizationRoutes(app: FastifyInstance) {
       return {
         runId: run.id,
         status: STATUS[run.status],
-        planId: run.resultPlan?.code ?? basePlan?.code ?? "",
+        planId: run.resultPlan?.code ?? loadPlan?.code ?? basePlan?.code ?? "",
         solverVersion: run.solverVersion,
         solutionQuality: (run.solutionQuality ?? "none") as "optimal" | "feasible" | "none",
         objectiveDeltaPct:

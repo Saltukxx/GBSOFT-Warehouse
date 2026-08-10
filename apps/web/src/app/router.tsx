@@ -10,6 +10,8 @@ import { DataQualityPage } from "../features/data-quality/DataQualityPage";
 import { ImportsPage } from "../features/imports/ImportsPage";
 import { LayoutEditorPage } from "../features/layout-editor/LayoutEditorPage";
 import { Twin3DPage } from "../features/twin-3d/Twin3DPage";
+import { PalletStudioPage } from "../features/pallet-studio/PalletStudioPage";
+import { LoadStudioPage } from "../features/load-studio/LoadStudioPage";
 import { PlaceholderPage } from "../features/placeholder/PlaceholderPage";
 
 export const router = createBrowserRouter([
@@ -58,6 +60,8 @@ export const router = createBrowserRouter([
         ),
       },
       { path: "operations/pick-orders", element: <PickOrdersPage /> },
+      { path: "operations/pallets", element: <PalletStudioPage /> },
+      { path: "operations/loading", element: <LoadStudioPage /> },
       { path: "twin/3d", element: <Twin3DPage /> },
       { path: "optimization/slotting", element: <SlottingStudioPage /> },
       {

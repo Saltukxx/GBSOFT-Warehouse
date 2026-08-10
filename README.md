@@ -4,9 +4,10 @@ WMS üstü çalışan karar ve kanıt katmanı. Bu depo, sunum demosundan gerçe
 geçişi barındırır.
 
 **Kapsam (v1):** Foundation, dijital ikiz (2B + **3B**), dynamic slotting,
-picking analitiği, **yükleme siparişi ve toplama turu optimizasyonu**, yönetişim.
-Palletization ve rota-duyarlı araç yükleme Faz 7-8'de; kamera/LiDAR doğrulama,
-Yard/Dock ve Freight Audit sonraki sürümlerdedir.
+picking analitiği, **yükleme siparişi, toplama turu, 3B palletization ve
+rota-duyarlı araç yükleme**, yönetişim. 3B Load Studio, barkod execution ve
+shadow publish aktiftir; kamera/LiDAR doğrulama, Yard/Dock ve Freight Audit
+sonraki sürümlerdedir.
 
 > Veriler kurgusal bir tesise (Marmara Dağıtım Merkezi) aittir. Gerçek müşteri
 > verisi bağlanana kadar plan KPI'ları **tahmin**dir; ölçülmüş kazanç değildir.
@@ -111,8 +112,11 @@ portunu kullanır; 5432/5433 başka projeler tarafından kullanıldığı için 
 | 6.5 | Yükleme siparişi, toplama turu optimizasyonu (CVRP) | **Tamam** |
 | 7.1 | Paket profilleri ve bağımsız palet doğrulayıcı | **Tamam** |
 | 7.2 | Outbound veri modeli ve doğrulama kapılı palet API'si | **Tamam** |
-| 7.3 | 3B palet görüntüleyici ve palet editörü | Bekliyor |
-| 8 | Rota-duyarlı truck loading ve execution | Bekliyor |
+| 7.3 | 3B palet görüntüleyici ve palet editörü | **Tamam** |
+| 8.1 | Araç şablonları ve bağımsız truck-load doğrulayıcı | **Tamam** |
+| 8.2 | Rota-duyarlı truck-load solver ve kalıcı API | **Tamam** |
+| 8.3 | 3B Load Studio ve manuel/warm-start editör | **Tamam** |
+| 8.4 | Barkod execution, talimat çıktısı ve shadow publish | **Tamam** |
 | 9 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Bekliyor |
 
 ### Hangi uç canlı?
@@ -120,9 +124,11 @@ portunu kullanır; 5432/5433 başka projeler tarafından kullanıldığı için 
 `apps/web/src/data/api.ts` içindeki `LIVE_ENDPOINTS` ve `FIXTURE_ENDPOINTS`
 listeleri, ürünün gerçekte ne kadarının canlı olduğunu tek bakışta gösterir.
 Şu an **layout**, **3B sahne**, **rota**, **yükleme siparişleri**, **toplama
-turları**, **veri aktarımı**, **veri kalitesi**, **pick-time/model**, **asenkron
-yeniden optimizasyon**, **slot planları**, **move-task yayını** ve **rollback**
-uçları veritabanıyla konuşur; yalnız operasyon özeti golden dataset'ten gelir.
+turları**, **sevkiyat/palet planları**, **palet editörü**, **veri aktarımı**,
+**araç şablonları**, **Load Studio**, **barkod execution/shadow publish**,
+**veri kalitesi**, **pick-time/model**, **asenkron yeniden optimizasyon**,
+**slot planları**, **move-task yayını** ve **rollback** uçları veritabanıyla
+konuşur; yalnız operasyon özeti golden dataset'ten gelir.
 Aktif ikizin kalıcı grafı ve 96×96 mesafe matrisi de API'den okunabilir:
 
 ```bash
@@ -131,6 +137,8 @@ curl -s localhost:3001/api/facilities/MARMARA-DC-01/distance-matrix
 curl -s localhost:3001/api/facilities/MARMARA-DC-01/pick-time-model
 curl -s localhost:3001/api/facilities/MARMARA-DC-01/picking-time
 curl -s localhost:3001/api/facilities/MARMARA-DC-01/scene-3d
+curl -s localhost:3001/api/vehicle-templates
+curl -s localhost:3001/api/shipments/SHP-DEMO-001/load-plans
 curl -s "localhost:3001/api/facilities/MARMARA-DC-01/routes?stops=DOCK,A-01-01,B-03-02,DOCK"
 ```
 
@@ -147,6 +155,18 @@ ve yanıt `geometrySource: "derived"` der; arayüz bunu üstte açıkça yazar.
 `depthM` kolonları doldurulur.
 
 WebGL yoksa ekran boş kalmaz; aynı katmanlarla mevcut 2B harita çizilir.
+
+### 3B Palet Studio
+
+`/operations/pallets` canlı sevkiyatları ve doğrulanmış palet planlarını açar.
+Paletler durak rengiyle 3B çizilir; yerleştirme sırası adım adım oynatılır.
+Seçilen elleçleme birimi koordinatla taşınabilir, 90° döndürülebilir ve
+kilitlenebilir. Her düzenleme solver'dan bağımsız doğrulayıcıdan yeniden geçer;
+ihlal oluşursa plan `rejected` durumuna düşer ve gerekçeler görünür.
+
+`Kilitlerle yeniden çöz` kilitli birimleri ve fiziksel destek zincirlerini
+fixed obstacle olarak korur; yalnız kalan yükleri yeniden yerleştirir. WebGL
+olmayan cihazlarda aynı seçim/edit akışı tepeden 2B görünümle devam eder.
 
 ### Yükleme siparişi ve toplama turu
 

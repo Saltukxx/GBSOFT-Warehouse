@@ -33,6 +33,15 @@ export const LIVE_ENDPOINTS = [
   "move-tasks",
   "publish",
   "rollback",
+  "shipments",
+  "pallet-plans",
+  "pallet-editor",
+  "vehicle-templates",
+  "load-plans",
+  "load-editor",
+  "load-execution",
+  "load-instructions",
+  "load-shadow-publish",
 ] as const;
 
 /**
@@ -92,3 +101,22 @@ export const fetchPlanVersions = DEMO_MODE ? demo.fetchPlanVersions : http.fetch
 export const reoptimize = DEMO_MODE ? demo.reoptimize : http.reoptimize;
 export const publishMoveTasks = DEMO_MODE ? demo.publishMoveTasks : http.publishMoveTasks;
 export const rollbackSlotPlan = DEMO_MODE ? demo.rollbackSlotPlan : http.rollbackSlotPlan;
+
+// Faz 7.3 canlı outbound akışı. Palet planları veritabanı ve optimizer
+// gerektirdiği için fixture modunda da canlı uç açıkça kullanılır.
+export const fetchShipments = http.fetchShipments;
+export const fetchShipment = http.fetchShipment;
+export const fetchPalletPlans = http.fetchPalletPlans;
+export const palletizeShipment = http.palletizeShipment;
+export const editPalletPlacement = http.editPalletPlacement;
+
+// Faz 8.3 canlı araç yükleme akışı.
+export const fetchVehicleTemplates = http.fetchVehicleTemplates;
+export const fetchLoadPlans = http.fetchLoadPlans;
+export const truckLoadShipment = http.truckLoadShipment;
+export const editLoadPlacement = http.editLoadPlacement;
+export const fetchLoadExecution = http.fetchLoadExecution;
+export const fetchLoadInstructions = http.fetchLoadInstructions;
+export const publishLoadPlan = http.publishLoadPlan;
+export const scanLoadUnit = http.scanLoadUnit;
+export const reoptimizeLoadPlan = http.reoptimizeLoadPlan;

@@ -50,6 +50,13 @@ Playwright ilk kullanımda tarayıcı ister: `npx playwright install chromium`.
    11 görev, 2 bağımlılık paketi, 1,7 sa, tahmini net etki `-4,1%`.
 9. **11 görevi WMS'e yayınla** → "Demo modunda 11 görev yayınlandı".
 10. **Plan geçmişi** — sürüm lineage'ı ve geri alma.
+11. **Palet Studio** (`/operations/pallets`) — sevkiyatı seçin, palet planını
+    oluşturun; bir yükü taşıyın/döndürün/kilitleyin ve kilitlerle yeniden çözün.
+12. **Load Studio** (`/operations/loading`) — aracı rota sırasına göre doldurun;
+    section view ve replay ile planı inceleyin, bir yükü kilitleyip warm-start
+    ile yeni sürüm üretin. Planı shadow yürütmeye alın; barkod/SSCC sırasını
+    teyit edin, eksik/hasarlı sapmada yüklü birimleri koruyarak yeniden çözün
+    ve mobil/yazdırılabilir talimatı açın.
 
 ## Demo durumlarını tetikleme
 
@@ -91,8 +98,8 @@ src/
 │   ├── fixtures/ tek kaynak demo verisi
 │   ├── rng.ts    deterministik üretim
 │   └── api.ts    §15 endpoint sözleşmesinin in-memory adaptörü
-├── components/   ui, charts, warehouse-map, data-table
-├── features/     operations, picking-time, slotting, move-plan, data-quality
+├── components/   ui, charts, warehouse-map, pallet-3d, truck-load-3d, data-table
+├── features/     operations, pallet-studio, load-studio, slotting, move-plan
 ├── styles/       tokens.css (§4), global.css, utilities.css
 └── tests/        veri tutarlılık testleri
 e2e/              Playwright golden path

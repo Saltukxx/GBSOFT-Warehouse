@@ -1,9 +1,9 @@
 # Demodan ürüne: GBSoft Slotting & Picking Intelligence v1
 
 > **Yaşayan belge.** Her faz bittiğinde durum tablosu ve sapmalar bölümü
-> güncellenir. Son güncelleme: Faz 6 ve 6.5 tamamlandı — 3B dijital ikiz, raf
-> sistemi, graf üzerinde rota replay, yükleme siparişi ve makespan hedefli
-> toplama turu optimizasyonu (09.08.2026).
+> güncellenir. Son güncelleme: Faz 8.4 tamamlandı — shadow publish,
+> barkod/SSCC sıra teyidi, eksik/hasarlı yük sapması, sabit yüklü replan ve
+> mobil/yazdırılabilir yükleme talimatı (10.08.2026).
 
 ## Neden
 
@@ -51,8 +51,13 @@ kurulur, kalibrasyonun kendisi ilk müşteriyle yapılır.
 | 5 | Move plan, kısmi yayın, ölçüm, rollback | Kısmi onay paket bütünlüğünü korur; publish idempotent; rollback lineage'ı bozmaz | **Tamam** |
 | 6 | 3B dijital ikiz, raf sistemi, rota replay | `scene-3d` 96 gözü metre biriminde döner; ölçülmemiş kot `derived` diye bildirilir; WebGL yoksa 2B'ye düşer | **Tamam** |
 | 6.5 | Yükleme siparişi ve toplama turu optimizasyonu | Sipariş kapasiteye göre turlara bölünür; makespan alt sınırla birlikte raporlanır; optimum iddia edilmez | **Tamam** |
-| 7 | Outbound modeli ve palletization | `Shipment`, `HandlingUnit`, `PalletPlan`; extreme-point packing | Bekliyor |
-| 8 | Rota-duyarlı truck loading ve execution | Araç şablonu, stop erişimi, precedence grafı, Load Studio | Bekliyor |
+| 7.1 | Paket profilleri ve bağımsız doğrulayıcı | Geometri/fizik kuralları çözücüden bağımsız ikinci kez doğrulanır | **Tamam** |
+| 7.2 | Outbound modeli ve palet API'si | `Shipment`, `HandlingUnit`, `PalletPlan`; doğrulama kapılı extreme-point packing | **Tamam** |
+| 7.3 | 3B palet görüntüleyici ve editör | Move/rotate/lock kalıcıdır; kilitli destek zinciri warm-start çözmede korunur | **Tamam** |
+| 8.1 | Araç şablonları ve bağımsız load doğrulayıcı | Sınır, kapı, engel, toplam/aks yükü, CoG ve stop erişimi tekrar hesaplanır | **Tamam** |
+| 8.2 | Rota-duyarlı truck-load solver ve API | Sabit rotada ilk durak kapıya, son durak derine gider; plan/run kalıcıdır | **Tamam** |
+| 8.3 | 3B Load Studio ve editör | Stop rengi, aks/CoG, replay, move/rotate/lock ve warm-start | **Tamam** |
+| 8.4 | Execution ve shadow publish | Barkod teyidi, sapma replanı, talimat çıktısı; Faz 9'a kadar canlı publish kapalı | **Tamam** |
 | 9 | IAM/RBAC, RLS, audit, gözlemlenebilirlik | Yetkisiz publish reddedilir; tüm plan değişiklikleri audit'te | Bekliyor |
 
 Her paket kendi başına gösterilebilir olmalı — demo satış aracı olarak çalışmaya
@@ -295,6 +300,21 @@ Doğrulandı: canlı Marmara ikizinde 14 satırlık sipariş 3 tura bölündü;
 makespan 11:43, toplam iş gücü 34:39, alt sınır 7:52 — turlar 11:25/11:31/11:43
 ile dengelenmiş. Tur mesafesi 309.494 m, aynı turun 3B güzergâhı 309.492 m.
 130 TypeScript testi (domain 75, API 29, web 26) ve 17 Python testi geçiyor.
+
+### Faz 7.1–7.3'te ne yapıldı
+
+- `PackageType`, `Shipment`, `ShipmentStop`, `HandlingUnit`, `PalletPlan` ve
+  `PalletPlacement` tenant-scoped olarak kalıcılaştırıldı; örnek outbound
+  sevkiyatı golden seed'e eklendi.
+- Extreme-point palet çözücüsü sınır, yönelim, ağırlık, destek, üst yük,
+  kırılganlık, sıcaklık ve ayrım kurallarını yerleştirme sırasında uygular.
+  Optimum iddia etmez; bağımsız TypeScript doğrulayıcı sonucu yeniden kurar.
+- `/operations/pallets` 3B palet, durak rengi, seçim, yükleme sırası replay'i,
+  koordinatla taşıma, yatay döndürme ve kilitleme sağlar. WebGL yoksa tepeden
+  2B görünüm aynı edit akışını korur.
+- Her manuel değişiklik tekrar doğrulanır. Kilitler veritabanında saklanır;
+  yeniden çözmede kilitli birim ile onu taşıyan destek zinciri fixed obstacle
+  olur, geri kalan birimler deterministik biçimde yeniden paketlenir.
 
 ### Gerçekleşen sapmalar
 

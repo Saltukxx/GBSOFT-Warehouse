@@ -19,5 +19,6 @@ export * from "./geometry3d.js";
 export * from "./rack.js";
 export * from "./packaging.js";
 export * from "./palletize.js";
+export * from "./truckLoad.js";
 export * from "./scene3d.js";
 export * from "./quality.js";

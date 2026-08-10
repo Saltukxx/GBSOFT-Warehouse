@@ -27,6 +27,8 @@ export type PalletRunRequest = {
   maxHeightM?: number;
   maxWeightKg?: number;
   timeLimitMs?: number;
+  /** Mevcut editör kilitlerini fixed obstacle olarak korur. */
+  keepLocked?: boolean;
 };
 
 export type PreparedPalletRun = {
@@ -37,7 +39,7 @@ export type PreparedPalletRun = {
 type DbPackageType = Awaited<ReturnType<typeof prisma.packageType.findMany>>[number];
 
 /** Veritabanı satırını alan modelinin paket profiline çevirir. */
-function toDomainType(row: DbPackageType): PackageType {
+export function toDomainType(row: DbPackageType): PackageType {
   return {
     code: row.code,
     name: row.name,
@@ -64,7 +66,7 @@ function toDomainType(row: DbPackageType): PackageType {
  * idempotenttir: aynı sevkiyat ikinci kez planlanınca yeni birim doğmaz,
  * mevcut kodlar yeniden kullanılır. Aksi hâlde her çalıştırma stok yaratırdı.
  */
-async function ensureHandlingUnits(
+export async function ensureHandlingUnits(
   tenantId: string,
   shipmentId: string,
 ): Promise<number> {
@@ -113,7 +115,7 @@ async function ensureHandlingUnits(
 }
 
 /** İçerik ağırlığını SKU ölçüsünden tamamlar. */
-async function fillGrossWeights(tenantId: string, shipmentId: string) {
+export async function fillGrossWeights(tenantId: string, shipmentId: string) {
   const units = await prisma.handlingUnit.findMany({
     where: { tenantId, shipmentId },
     include: {
@@ -165,6 +167,48 @@ export async function preparePalletRun(
     }),
   ]);
 
+  const currentPlacements = request.keepLocked
+    ? await prisma.palletPlacement.findMany({
+        where: {
+          tenantId,
+          plan: { shipmentId: shipment.id },
+        },
+        orderBy: [{ plan: { seq: "asc" } }, { seq: "asc" }],
+        include: {
+          plan: { select: { seq: true } },
+          hu: { select: { code: true } },
+        },
+      })
+    : [];
+  // Üstteki birim kilitlenirse taşıyıcı zinciri de sabit kalmalıdır;
+  // aksi hâlde fixed obstacle havada başlar. Bu kapanış kullanıcı kilidinin
+  // fiziksel anlamıdır, gizli bir solver varsayımı değildir.
+  const fixedIds = new Set(
+    currentPlacements.filter((placement) => placement.locked).map((placement) => placement.id),
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const placement of currentPlacements) {
+      if (!fixedIds.has(placement.id) || placement.y <= 1e-4) continue;
+      for (const supporter of currentPlacements) {
+        if (supporter.planId !== placement.planId || supporter.id === placement.id) continue;
+        const touching = Math.abs(supporter.y + supporter.heightM - placement.y) <= 1e-4;
+        const overlapX =
+          Math.min(supporter.x + supporter.lengthM, placement.x + placement.lengthM) -
+          Math.max(supporter.x, placement.x);
+        const overlapZ =
+          Math.min(supporter.z + supporter.widthM, placement.z + placement.widthM) -
+          Math.max(supporter.z, placement.z);
+        if (touching && overlapX > 1e-4 && overlapZ > 1e-4 && !fixedIds.has(supporter.id)) {
+          fixedIds.add(supporter.id);
+          changed = true;
+        }
+      }
+    }
+  }
+  const lockedPlacements = currentPlacements.filter((placement) => fixedIds.has(placement.id));
+
   const baseCode = request.baseTypeCode ?? DEFAULT_BASE_TYPE_CODE;
   const baseType = packageTypes.find((type) => type.code === baseCode);
   if (!baseType) {
@@ -204,6 +248,17 @@ export async function preparePalletRun(
       gross_weight_kg: Math.max(0.001, unit.grossWeightKg),
       stop_code: unit.stop?.code ?? null,
     })),
+    fixed_placements: lockedPlacements.map((placement) => ({
+      hu_code: placement.hu.code,
+      pallet_seq: placement.plan.seq,
+      x: placement.x,
+      y: placement.y,
+      z: placement.z,
+      length_m: placement.lengthM,
+      width_m: placement.widthM,
+      height_m: placement.heightM,
+      seq: placement.seq,
+    })),
   };
 
   const run = await prisma.optimizationRun.create({
@@ -212,7 +267,7 @@ export async function preparePalletRun(
       facilityId: shipment.facilityId,
       kind: "PALLET",
       status: "QUEUED",
-      solverVersion: "pallet-extreme-point-1.0.0",
+      solverVersion: "pallet-extreme-point-1.1.0",
       modelVersion: "package-profile-v1",
       objectiveProfileKey: "pallet-default",
       parameters: json({
@@ -223,7 +278,10 @@ export async function preparePalletRun(
         maxHeightM: input.base.max_height_m,
         maxWeightKg: input.base.max_weight_kg,
       }),
-      constraints: json({ handlingUnitCount }),
+      constraints: json({
+        handlingUnitCount,
+        fixedPlacementCount: input.fixed_placements.length,
+      }),
       inputSnapshot: json(input),
       seed: input.seed,
       timeLimitMs: input.time_limit_ms,
@@ -261,6 +319,9 @@ export async function executePalletRun(runId: string): Promise<void> {
     };
 
     const result = await solvePallet(input);
+    const lockedCodes = new Set(
+      input.fixed_placements.map((placement) => placement.hu_code),
+    );
 
     if (result.status !== "feasible") {
       await prisma.optimizationRun.update({
@@ -381,6 +442,7 @@ export async function executePalletRun(runId: string): Promise<void> {
                   grossWeightKg: placement.grossWeightKg,
                   layer: placement.layer,
                   seq: placement.seq,
+                  locked: lockedCodes.has(placement.huCode),
                 })),
             },
           },

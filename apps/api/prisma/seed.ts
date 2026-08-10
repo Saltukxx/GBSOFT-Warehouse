@@ -14,6 +14,7 @@ import { PrismaClient } from "@prisma/client";
 import type { EquipmentClass, HandlingClass, Prisma, RackSide } from "@prisma/client";
 import {
   DEFAULT_PACKAGE_TYPES,
+  DEFAULT_VEHICLE_TEMPLATES,
   DEFAULT_PICK_TIME_PARAMETERS,
   PROFILE_PRESETS,
   type ObjectiveProfile,
@@ -407,8 +408,9 @@ async function main() {
     // --- Paket profilleri (Faz 7) -----------------------------------------
     // Ölçüler saha varsayılanıdır ve **ölçülmemiştir**; gerçek tesiste
     // `package-type` verisiyle değiştirilir.
+    const packageTypeIdByCode = new Map<string, string>();
     for (const type of DEFAULT_PACKAGE_TYPES) {
-      await tx.packageType.upsert({
+      const row = await tx.packageType.upsert({
         where: { tenantId_code: { tenantId: TENANT_ID, code: type.code } },
         update: {},
         create: {
@@ -430,7 +432,83 @@ async function main() {
           segregationGroup: type.segregationGroup ?? null,
         },
       });
+      packageTypeIdByCode.set(type.code, row.id);
     }
+
+    // --- Araç şablonları (Faz 8.1) ------------------------------------
+    // Bunlar demo/golden varsayımlardır; canlı kullanımdan önce üretici
+    // belgesi veya saha ölçümüyle ayrı bir sürüm olarak doğrulanmalıdır.
+    for (const vehicle of DEFAULT_VEHICLE_TEMPLATES) {
+      const data = {
+        name: vehicle.name,
+        kind: vehicle.kind,
+        internalLengthM: vehicle.internalLengthM,
+        internalWidthM: vehicle.internalWidthM,
+        internalHeightM: vehicle.internalHeightM,
+        rearDoorWidthM: vehicle.rearDoor.widthM,
+        rearDoorHeightM: vehicle.rearDoor.heightM,
+        rearDoorSillM: vehicle.rearDoor.sillHeightM,
+        maxPayloadKg: vehicle.maxPayloadKg,
+        axleGroups: vehicle.axleGroups as unknown as Prisma.InputJsonValue,
+        obstacles: vehicle.obstacles as unknown as Prisma.InputJsonValue,
+        cogMinX: vehicle.cogEnvelope.minX,
+        cogMaxX: vehicle.cogEnvelope.maxX,
+        cogMinY: vehicle.cogEnvelope.minY,
+        cogMaxY: vehicle.cogEnvelope.maxY,
+        cogMaxZ: vehicle.cogEnvelope.maxZ,
+        rulesVersion: vehicle.rulesVersion,
+        geometrySource: vehicle.geometrySource,
+      };
+      await tx.vehicleTemplate.upsert({
+        where: { tenantId_code: { tenantId: TENANT_ID, code: vehicle.code } },
+        update: data,
+        create: { tenantId: TENANT_ID, code: vehicle.code, ...data },
+      });
+    }
+
+    // --- Örnek outbound sevkiyatı (Faz 7.3) -----------------------------
+    // Plan seed'e gömülmez: kullanıcı Palet Studio'da aynı canlı API ve
+    // optimizer hattıyla üretir. Böylece ekran statik bir 3B maket değildir.
+    const shipment = await tx.shipment.create({
+      data: {
+        tenantId: TENANT_ID,
+        facilityId: facility.id,
+        code: "SHP-DEMO-001",
+        carrierCode: "GBS-TR-34",
+        status: "READY",
+        plannedDepartureAt: new Date(SNAPSHOT_AT.getTime() + 6 * 60 * 60 * 1000),
+        stops: {
+          create: [
+            { tenantId: TENANT_ID, seq: 1, code: "IST-01", name: "İstanbul Avrupa" },
+            { tenantId: TENANT_ID, seq: 2, code: "GEB-02", name: "Gebze" },
+            { tenantId: TENANT_ID, seq: 3, code: "BUR-03", name: "Bursa" },
+          ],
+        },
+      },
+      include: { stops: { select: { id: true, code: true } } },
+    });
+    const stopIdByCode = new Map(shipment.stops.map((stop) => [stop.code, stop.id]));
+    const outboundTypes = [
+      "CASE-STD",
+      "CASE-STD",
+      "CASE-FRAGILE",
+      "SACK",
+      "CASE-STD",
+      "DRUM-200L",
+    ];
+    const outboundStops = ["IST-01", "GEB-02", "BUR-03", "IST-01", "GEB-02", "BUR-03"];
+    const outboundQuantities = [6, 4, 3, 3, 4, 2];
+    await tx.shipmentLine.createMany({
+      data: SKUS.slice(0, 6).map((sku, index) => ({
+        tenantId: TENANT_ID,
+        shipmentId: shipment.id,
+        stopId: stopIdByCode.get(outboundStops[index])!,
+        lineNo: index + 1,
+        skuId: skuIdByCode.get(sku.id)!,
+        packageTypeId: packageTypeIdByCode.get(outboundTypes[index])!,
+        quantity: outboundQuantities[index],
+      })),
+    });
 
     // --- Amaç profilleri -------------------------------------------------
     const profileIdByKey = new Map<string, string>();

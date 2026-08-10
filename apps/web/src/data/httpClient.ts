@@ -18,6 +18,13 @@ import type {
   OptimizationRunResponse,
   ReoptimizeRequest,
   ReoptimizeResponse,
+  PalletPlanView,
+  LoadExecutionView,
+  LoadInstructionSheet,
+  TruckLoadPlanView,
+  VehicleTemplate,
+  ShipmentDetail,
+  ShipmentSummary,
   MoveTask,
   PlanVersion,
   SlotPlan,
@@ -374,4 +381,187 @@ export async function awaitOptimizationRun(
     "Optimizasyon sonucu bekleme süresini aştı.",
     `/api/optimization-runs/${runId}`,
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sevkiyat ve palet planı (Faz 7.3)                                  */
+/* ------------------------------------------------------------------ */
+
+export async function fetchShipments(
+  signal?: AbortSignal,
+): Promise<ShipmentSummary[]> {
+  const body = await request<{ shipments: ShipmentSummary[] }>(
+    `/api/shipments?facility=${FACILITY_CODE}`,
+    { signal },
+  );
+  return body.shipments;
+}
+
+export async function fetchShipment(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ShipmentDetail> {
+  return request(`/api/shipments/${encodeURIComponent(id)}`, { signal });
+}
+
+export async function fetchPalletPlans(
+  shipmentId: string,
+  signal?: AbortSignal,
+): Promise<PalletPlanView[]> {
+  const body = await request<{ plans: PalletPlanView[] }>(
+    `/api/shipments/${encodeURIComponent(shipmentId)}/pallet-plans`,
+    { signal },
+  );
+  return body.plans;
+}
+
+export async function palletizeShipment(
+  shipmentId: string,
+  options: { keepLocked?: boolean } = {},
+): Promise<{ runId: string; status: "queued"; handlingUnitCount: number }> {
+  return request(`/api/shipments/${encodeURIComponent(shipmentId)}/palletize`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(options),
+  });
+}
+
+export async function editPalletPlacement(
+  planId: string,
+  huCode: string,
+  change: {
+    x?: number;
+    y?: number;
+    z?: number;
+    rotateYaw?: boolean;
+    locked?: boolean;
+  },
+): Promise<{ state: PalletPlanView["state"] }> {
+  return request(
+    `/api/pallet-plans/${encodeURIComponent(planId)}/placements/${encodeURIComponent(huCode)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(change),
+    },
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Rota-duyarlı araç yükleme (Faz 8.3)                              */
+/* ------------------------------------------------------------------ */
+
+export async function fetchVehicleTemplates(
+  signal?: AbortSignal,
+): Promise<VehicleTemplate[]> {
+  const body = await request<{ templates: VehicleTemplate[] }>(
+    "/api/vehicle-templates",
+    { signal },
+  );
+  return body.templates;
+}
+
+export async function fetchLoadPlans(
+  shipmentId: string,
+  signal?: AbortSignal,
+): Promise<TruckLoadPlanView[]> {
+  const body = await request<{ plans: TruckLoadPlanView[] }>(
+    `/api/shipments/${encodeURIComponent(shipmentId)}/load-plans`,
+    { signal },
+  );
+  return body.plans;
+}
+
+export async function truckLoadShipment(
+  shipmentId: string,
+  options: { vehicleTemplateCode: string; keepLocked?: boolean },
+): Promise<{ runId: string; status: "queued"; handlingUnitCount: number }> {
+  return request(`/api/shipments/${encodeURIComponent(shipmentId)}/truck-load`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(options),
+  });
+}
+
+export async function editLoadPlacement(
+  planId: string,
+  huCode: string,
+  change: {
+    x?: number;
+    y?: number;
+    z?: number;
+    rotateYaw?: boolean;
+    locked?: boolean;
+  },
+): Promise<{ state: TruckLoadPlanView["state"] }> {
+  return request(
+    `/api/load-plans/${encodeURIComponent(planId)}/placements/${encodeURIComponent(huCode)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(change),
+    },
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Araç yükleme execution ve shadow publish (Faz 8.4)                 */
+/* ------------------------------------------------------------------ */
+
+export async function fetchLoadExecution(
+  planId: string,
+  signal?: AbortSignal,
+): Promise<LoadExecutionView | null> {
+  const body = await request<{ execution: LoadExecutionView | null }>(
+    `/api/load-plans/${encodeURIComponent(planId)}/execution`,
+    { signal },
+  );
+  return body.execution;
+}
+
+export async function fetchLoadInstructions(
+  planId: string,
+): Promise<LoadInstructionSheet> {
+  return request(`/api/load-plans/${encodeURIComponent(planId)}/instructions`);
+}
+
+export async function publishLoadPlan(
+  planId: string,
+): Promise<{ mode: "shadow"; idempotent: boolean; execution: LoadExecutionView }> {
+  return request(`/api/load-plans/${encodeURIComponent(planId)}/publish`, {
+    method: "POST",
+    headers: { "idempotency-key": `load-plan-${planId}` },
+  });
+}
+
+export async function scanLoadUnit(
+  planId: string,
+  input: {
+    scannedCode: string;
+    outcome: "confirmed" | "missing" | "damaged";
+    note?: string;
+  },
+): Promise<{ idempotent: boolean; eventId: string; execution: LoadExecutionView }> {
+  return request(`/api/load-plans/${encodeURIComponent(planId)}/scan-events`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": crypto.randomUUID(),
+    },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function reoptimizeLoadPlan(
+  planId: string,
+): Promise<{
+  runId: string;
+  status: "queued";
+  mode: "deviation-replan";
+  fixedUnitCount: number;
+  excludedUnitCount: number;
+}> {
+  return request(`/api/load-plans/${encodeURIComponent(planId)}/reoptimize`, {
+    method: "POST",
+  });
 }

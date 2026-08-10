@@ -7,6 +7,8 @@ from .pallet import SOLVER_VERSION as PALLET_SOLVER_VERSION
 from .picktour import PickTourRequest, PickTourResponse, solve_pick_tour
 from .picktour import SOLVER_VERSION as PICK_TOUR_SOLVER_VERSION
 from .solver import SOLVER_VERSION, solve_slotting
+from .truckload import TruckLoadRequest, TruckLoadResponse, solve_truck_load
+from .truckload import SOLVER_VERSION as TRUCK_LOAD_SOLVER_VERSION
 
 
 app = FastAPI(title="GBSoft Slotting Optimizer", version=__version__)
@@ -19,6 +21,7 @@ def health() -> dict[str, str]:
         "solverVersion": SOLVER_VERSION,
         "pickTourSolverVersion": PICK_TOUR_SOLVER_VERSION,
         "palletSolverVersion": PALLET_SOLVER_VERSION,
+        "truckLoadSolverVersion": TRUCK_LOAD_SOLVER_VERSION,
     }
 
 
@@ -35,3 +38,8 @@ def solve_tour(request: PickTourRequest) -> PickTourResponse:
 @app.post("/solve/pallet", response_model=PalletizeResponse)
 def solve_pallet(request: PalletizeRequest) -> PalletizeResponse:
     return solve_palletize(request)
+
+
+@app.post("/solve/truck-load", response_model=TruckLoadResponse)
+def solve_load(request: TruckLoadRequest) -> TruckLoadResponse:
+    return solve_truck_load(request)

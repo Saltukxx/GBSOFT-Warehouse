@@ -21,7 +21,11 @@
 
 import type { Vec3 } from "./geometry3d.js";
 import { roundM } from "./geometry3d.js";
-import type { PackageType, TemperatureClass } from "./packaging.js";
+import {
+  allowedFootprints,
+  type PackageType,
+  type TemperatureClass,
+} from "./packaging.js";
 
 /* ------------------------------------------------------------------ */
 /* Plan tipleri                                                        */
@@ -74,6 +78,7 @@ export type PalletPlan = {
 
 export type PalletViolationCode =
   | "unknown-package-type"
+  | "invalid-orientation"
   | "overlap"
   | "out-of-bounds"
   | "over-height"
@@ -179,11 +184,27 @@ export function validatePalletPlan(
 
   /* --- Paket türleri --------------------------------------------------- */
   for (const placement of placements) {
-    if (!typeByCode.has(placement.packageTypeCode)) {
+    const type = typeByCode.get(placement.packageTypeCode);
+    if (!type) {
       add(
         "unknown-package-type",
         [placement.huCode],
         `${placement.huCode} bilinmeyen paket türüne bağlı: ${placement.packageTypeCode}.`,
+      );
+      continue;
+    }
+
+    const orientationAllowed = allowedFootprints(type).some(
+      (footprint) =>
+        Math.abs(footprint.lengthM - placement.lengthM) <= EPSILON &&
+        Math.abs(footprint.widthM - placement.widthM) <= EPSILON &&
+        Math.abs(footprint.heightM - placement.heightM) <= EPSILON,
+    );
+    if (!orientationAllowed) {
+      add(
+        "invalid-orientation",
+        [placement.huCode],
+        `${placement.huCode} paket profilinin izin vermediği yönde çevrilmiş.`,
       );
     }
   }

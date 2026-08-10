@@ -38,6 +38,20 @@ class ItemInput(BaseModel):
     stop_code: Optional[str] = None
 
 
+class FixedPlacementInput(BaseModel):
+    """Editörde kilitlenmiş yerleşim; çözücü bunu engel olarak korur."""
+
+    hu_code: str
+    pallet_seq: int = Field(ge=1)
+    x: float = Field(ge=0)
+    y: float = Field(ge=0)
+    z: float = Field(ge=0)
+    length_m: float = Field(gt=0)
+    width_m: float = Field(gt=0)
+    height_m: float = Field(gt=0)
+    seq: int = Field(ge=1)
+
+
 class PalletBaseInput(BaseModel):
     package_type_code: str
     length_m: float = Field(gt=0)
@@ -56,6 +70,7 @@ class PalletizeRequest(BaseModel):
     base: PalletBaseInput
     package_types: List[PackageProfile] = Field(min_length=1)
     items: List[ItemInput] = Field(min_length=1)
+    fixed_placements: List[FixedPlacementInput] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_references(self) -> "PalletizeRequest":
@@ -66,6 +81,14 @@ class PalletizeRequest(BaseModel):
         codes = [item.hu_code for item in self.items]
         if len(codes) != len(set(codes)):
             raise ValueError("Elleçleme birimi kimlikleri benzersiz olmalı")
+        fixed_codes = [placement.hu_code for placement in self.fixed_placements]
+        if len(fixed_codes) != len(set(fixed_codes)):
+            raise ValueError("Kilitli elleçleme birimleri benzersiz olmalı")
+        unknown_fixed = sorted(set(fixed_codes) - set(codes))
+        if unknown_fixed:
+            raise ValueError(
+                f"Kilitli birim istek öğelerinde yok: {', '.join(unknown_fixed)}"
+            )
         return self
 
 

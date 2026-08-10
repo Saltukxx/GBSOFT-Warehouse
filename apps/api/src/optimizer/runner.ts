@@ -422,11 +422,22 @@ export async function executeOptimizationRun(runId: string) {
 export async function recoverOptimizationRuns() {
   const pending = await prisma.optimizationRun.findMany({
     where: { status: { in: ["QUEUED", "RUNNING"] } },
-    select: { id: true },
+    select: { id: true, kind: true },
     orderBy: { createdAt: "asc" },
   });
   for (const run of pending) {
-    setTimeout(() => void executeOptimizationRun(run.id), 0);
+    if (run.kind === "PALLET") {
+      const { executePalletRun } = await import("../pallet/runner.js");
+      setTimeout(() => void executePalletRun(run.id), 0);
+    } else if (run.kind === "PICK_TOUR") {
+      const { executePickTourRun } = await import("../picktour/runner.js");
+      setTimeout(() => void executePickTourRun(run.id), 0);
+    } else if (run.kind === "TRUCK_LOAD") {
+      const { executeTruckLoadRun } = await import("../truckload/runner.js");
+      setTimeout(() => void executeTruckLoadRun(run.id), 0);
+    } else {
+      setTimeout(() => void executeOptimizationRun(run.id), 0);
+    }
   }
   return pending.length;
 }

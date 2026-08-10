@@ -320,6 +320,8 @@ export type PalletPlacementView = {
   grossWeightKg: number;
   layer: number;
   seq: number;
+  /** Editörde sabitlenen birim; yeniden çözmede fixed obstacle olur. */
+  locked: boolean;
 };
 
 /**

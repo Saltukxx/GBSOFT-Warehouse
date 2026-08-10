@@ -34,12 +34,13 @@ CASE_STD = {
 }
 
 
-def request(items, package_types=None, base=None) -> PalletizeRequest:
+def request(items, package_types=None, base=None, fixed_placements=None) -> PalletizeRequest:
     return PalletizeRequest(
         run_id="test",
         base=base or EURO_BASE,
         package_types=package_types or [CASE_STD],
         items=items,
+        fixed_placements=fixed_placements or [],
     )
 
 
@@ -88,6 +89,48 @@ def test_ayni_girdi_ayni_plani_uretir():
         ]
 
     assert shape(first) == shape(second)
+
+
+def test_kilitli_yerlesimi_koruyup_kalanini_yeniden_cozer():
+    locked = {
+        "hu_code": "HU-001",
+        "pallet_seq": 1,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "length_m": 0.6,
+        "width_m": 0.4,
+        "height_m": 0.3,
+        "seq": 1,
+    }
+    value = request(cases(8), fixed_placements=[locked])
+
+    result = solve_palletize(value)
+    placement = next(p for p in all_placements(result) if p.hu_code == "HU-001")
+
+    assert result.status == "feasible"
+    assert (placement.x, placement.y, placement.z) == (0.0, 0.0, 0.0)
+    assert (placement.length_m, placement.width_m) == (0.6, 0.4)
+    assert len(all_placements(result)) == 8
+
+
+def test_gecersiz_kilit_cozumu_uygulanamaz_yapar():
+    value = request(cases(2), fixed_placements=[{
+        "hu_code": "HU-001",
+        "pallet_seq": 1,
+        "x": 0.9,
+        "y": 0.0,
+        "z": 0.0,
+        "length_m": 0.6,
+        "width_m": 0.4,
+        "height_m": 0.3,
+        "seq": 1,
+    }])
+
+    result = solve_palletize(value)
+
+    assert result.status == "infeasible"
+    assert any("kilidi" in reason for reason in result.infeasibility_reasons)
 
 
 def test_kutular_cakismaz_ve_palet_disina_tasmaz():

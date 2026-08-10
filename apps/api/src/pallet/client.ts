@@ -38,6 +38,17 @@ export type PalletSolveRequest = {
     gross_weight_kg: number;
     stop_code: string | null;
   }>;
+  fixed_placements: Array<{
+    hu_code: string;
+    pallet_seq: number;
+    x: number;
+    y: number;
+    z: number;
+    length_m: number;
+    width_m: number;
+    height_m: number;
+    seq: number;
+  }>;
 };
 
 export type PalletSolveResult = {
