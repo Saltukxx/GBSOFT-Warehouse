@@ -126,6 +126,38 @@ export const DEFAULT_PACKAGE_TYPES: readonly PackageType[] = [
     temperatureClass: "ambient",
   },
   {
+    /**
+     * Yüklenmeye hazır palet birim yükü.
+     *
+     * `PALLET-EUR` boş paletin kendisidir (14,4 cm); araca giren şey ise
+     * üzerine istiflenmiş yükle birlikte tek bir birimdir. Araç yerleşimi
+     * bu profille çalışır: yarı römorka 33 europalet zemin yüklemesiyle
+     * girer ve sınırı hacim değil dingil yükü belirler.
+     *
+     * Yükseklik ve üst yük değerleri **ölçülmemiştir**; sargılanmış karışık
+     * koli paletinin makul saha varsayılanıdır.
+     */
+    code: "PALLET-EUR-LOADED",
+    name: "Yüklü euro palet",
+    shape: "pallet",
+    lengthM: 1.2,
+    widthM: 0.8,
+    // Palet (0,144) + sargılanmış yük yüksekliği.
+    heightM: 1.45,
+    // Yalnız paletin darası; yük ağırlığı içerikten gelir.
+    tareKg: 25,
+    rotation: "yaw",
+    // Karışık koli paleti üstüne ikinci palet almaz. Bu bir kapasite
+    // kısıtıdır: çift istif ancak yükün kendisi taşıyıcıysa mümkündür ve
+    // bunu ölçmediğimiz sürece varsaymıyoruz.
+    maxTopLoadKg: 0,
+    minSupportRatio: 0.9,
+    stackable: false,
+    fragile: false,
+    compressionTolerancePct: 0,
+    temperatureClass: "ambient",
+  },
+  {
     code: "DRUM-200L",
     name: "200 L varil",
     shape: "drum",
@@ -297,7 +329,13 @@ export type ShipmentLineView = {
   skuName: string;
   packageTypeCode: string;
   packageTypeName: string;
+  /** Kaç elleçleme birimi üretileceği. */
   quantity: number;
+  /**
+   * Bir elleçleme biriminin içindeki SKU adedi. Koli için 1'dir; palet birim
+   * yükünde paletin üzerindeki koli sayısıdır ve brüt ağırlığı bu belirler.
+   */
+  unitsPerHandlingUnit: number;
 };
 
 export type ShipmentDetail = ShipmentSummary & {

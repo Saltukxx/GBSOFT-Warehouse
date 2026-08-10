@@ -99,7 +99,10 @@ export async function ensureHandlingUnits(
         packageTypeId: line.packageTypeId,
         skuId: line.skuId,
         stopId: line.stop.id,
-        quantity: 1,
+        // Bir birimin içindeki SKU adedi. Koli satırında 1'dir; palet birim
+        // yükünde paletin üzerindeki koli sayısıdır ve ağırlık farkını bu
+        // yapar — 27 paletlik bir sevkiyat bu alan olmadan 27 × dara ederdi.
+        quantity: line.unitsPerHandlingUnit,
         // Brüt ağırlık dara + içerikten oluşur. İçerik ağırlığı SKU ölçüsünden
         // gelir; ölçü yoksa yalnız dara bilinir ve bu açıkça eksik veridir.
         grossWeightKg: line.packageType.tareKg,

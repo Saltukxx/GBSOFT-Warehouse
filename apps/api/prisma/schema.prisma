@@ -808,7 +808,12 @@ model ShipmentLine {
   lineNo        Int
   skuId         String
   packageTypeId String
+  /// Kaç elleçleme birimi üretileceği.
   quantity      Int
+  /// Bir elleçleme biriminin içindeki SKU adedi. Koli için 1'dir; palet
+  /// birim yükünde üzerindeki koli sayısıdır. Brüt ağırlık dara + bu adet ×
+  /// SKU ağırlığı olarak hesaplanır, bu yüzden palet ağırlığı buradan gelir.
+  unitsPerHandlingUnit Int @default(1)
 
   shipment    Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   stop        ShipmentStop @relation(fields: [stopId], references: [id], onDelete: Cascade)

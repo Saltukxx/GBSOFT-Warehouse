@@ -117,6 +117,19 @@ async function main() {
       // bağlıdır — plana girmiş bir SKU sessizce silinemez. Bu yüzden
       // sevkiyat ve yükleme siparişleri tesisten önce temizlenir.
       await tx.pickOrder.deleteMany({ where: { ...scope, facilityId: existing.id } });
+      // Araç planları sevkiyattan önce düşmeli. `LoadPlacement.hu` ilişkisi
+      // `Restrict`: plana girmiş bir elleçleme birimi sessizce silinemez.
+      // Sevkiyatı silmek elleçleme birimlerini cascade ile götürmeye
+      // çalıştığı için, önceden üretilmiş bir araç planı varsa seed bu
+      // kısıta takılıp `P2003` ile duruyordu — yani demoyu bir kez
+      // çalıştırdıktan sonra veritabanı yeniden tohumlanamıyordu.
+      // Plan silindiğinde yerleşim, yürütme ve tarama olayları cascade gider.
+      await tx.loadPlan.deleteMany({
+        where: { ...scope, shipment: { facilityId: existing.id } },
+      });
+      await tx.palletPlan.deleteMany({
+        where: { ...scope, shipment: { facilityId: existing.id } },
+      });
       await tx.shipment.deleteMany({ where: { ...scope, facilityId: existing.id } });
       await tx.objectiveProfile.deleteMany({ where: scope });
       await tx.facility.delete({ where: { id: existing.id } });
@@ -508,6 +521,90 @@ async function main() {
         packageTypeId: packageTypeIdByCode.get(outboundTypes[index])!,
         quantity: outboundQuantities[index],
       })),
+    });
+
+    // --- Dolu römork sevkiyatı (Faz 8 doğrulama verisi) -------------------
+    //
+    // SHP-DEMO-001 karışık koli senaryosudur: kırılgan, varil ve çuval
+    // kurallarını tetikler ama 13,6 m'lik römorkun %2'sini doldurur. Aks
+    // yükü, ağırlık merkezi ve rota erişimi kısıtlarının hiçbiri devreye
+    // girmez — yani Faz 8.1 doğrulayıcısının asıl dalları demo veriyle hiç
+    // çalışmaz. Bu ikinci sevkiyat o boşluğu kapatır.
+    //
+    // **Modelleme kısayolu:** satırlar doğrudan palet birim yükü olarak
+    // giriyor. Faz 7 kolileri palete istifliyor ama üretilen paleti bir üst
+    // elleçleme birimi olarak kaydetmiyor, bu yüzden araç yerleşimi kolileri
+    // tek tek görüyor. Faz 7 → 8 devri yazılana kadar palet birim yükü
+    // sevkiyat satırında tanımlanır; tedarikçi paletli gönderdiğinde zaten
+    // gerçek akış budur.
+    const trailerShipment = await tx.shipment.create({
+      data: {
+        tenantId: TENANT_ID,
+        facilityId: facility.id,
+        code: "SHP-DEMO-002",
+        carrierCode: "GBS-TR-34",
+        status: "READY",
+        plannedDepartureAt: new Date(SNAPSHOT_AT.getTime() + 9 * 60 * 60 * 1000),
+        stops: {
+          create: [
+            { tenantId: TENANT_ID, seq: 1, code: "IZM-01", name: "İzmir Merkez" },
+            { tenantId: TENANT_ID, seq: 2, code: "MAN-02", name: "Manisa" },
+            { tenantId: TENANT_ID, seq: 3, code: "DEN-03", name: "Denizli" },
+          ],
+        },
+      },
+      include: { stops: { select: { id: true, code: true } } },
+    });
+    const trailerStopIdByCode = new Map(
+      trailerShipment.stops.map((stop) => [stop.code, stop.id]),
+    );
+
+    /**
+     * Palet başına hedef brüt ağırlık (kg).
+     *
+     * 27 palet × 640 kg = 17,3 t. SEMI-13M6'nın 24 t taşıma kapasitesinin
+     * altında ama kingpin sınırının (12 t, boşta 4,5 t) üstünde: yük öne
+     * yaslanırsa kingpin payı 7,5 t'yi aşar. Çözücünün yükü arkaya kaydırması
+     * gerekir — aks kısıtının plana gerçekten dokunduğu tek demo senaryosu
+     * budur.
+     */
+    const TARGET_PALLET_KG = 640;
+    /** 27 palet, 1,2 m boyuna × 3 sıra = 10,8 m; 13,6 m'de 2,8 m boyuna oyun. */
+    const trailerPalletsByStop: ReadonlyArray<readonly [string, number]> = [
+      ["IZM-01", 8],
+      ["MAN-02", 9],
+      ["DEN-03", 10],
+    ];
+    // Ağırlığı sevkiyata elle yazmıyoruz: brüt ağırlık dara + koli adedi ×
+    // SKU ağırlığından hesaplanıyor, bu yüzden koli adedi SKU'nun kendi
+    // ölçüsünden geri çözülür. Ölçüsüz SKU palet yüküne giremez.
+    const palletSkus = SKUS.filter(
+      (sku) => typeof sku.weightKg === "number" && sku.weightKg > 0,
+    ).slice(0, trailerPalletsByStop.length);
+    if (palletSkus.length < trailerPalletsByStop.length) {
+      throw new Error("Dolu römork sevkiyatı için ölçülü SKU yetersiz.");
+    }
+    const loadedPalletTare =
+      DEFAULT_PACKAGE_TYPES.find((type) => type.code === "PALLET-EUR-LOADED")!.tareKg;
+
+    await tx.shipmentLine.createMany({
+      data: trailerPalletsByStop.map(([stopCode, palletCount], index) => {
+        const sku = palletSkus[index];
+        const casesPerPallet = Math.max(
+          1,
+          Math.round((TARGET_PALLET_KG - loadedPalletTare) / sku.weightKg!),
+        );
+        return {
+          tenantId: TENANT_ID,
+          shipmentId: trailerShipment.id,
+          stopId: trailerStopIdByCode.get(stopCode)!,
+          lineNo: index + 1,
+          skuId: skuIdByCode.get(sku.id)!,
+          packageTypeId: packageTypeIdByCode.get("PALLET-EUR-LOADED")!,
+          quantity: palletCount,
+          unitsPerHandlingUnit: casesPerPallet,
+        };
+      }),
     });
 
     // --- Amaç profilleri -------------------------------------------------

@@ -91,6 +91,36 @@ Uygulama sırası ve bağımsız çıkış koşulları:
 - `GET /api/shipments/:id/load-plans` eski koşuları silmeden sürümlü plan,
   yerleşim, aks yükü, CoG, doluluk ve ihlal kaydını döner.
 
+#### Demo verisi: kısıtın bağlayıcı olduğu senaryo
+
+`SHP-DEMO-001` karışık koli sevkiyatıdır; kırılgan, varil ve çuval kurallarını
+tetikler ama 13,6 m'lik römorkun %2'sini doldurur. Aks yükü, CoG ve rota
+erişimi kısıtlarının hiçbiri bağlayıcı olmaz — yani Faz 8.1 doğrulayıcısının
+asıl dalları demo veriyle hiç çalışmıyordu.
+
+`SHP-DEMO-002` bu boşluğu kapatır: 3 durak, 27 palet birim yükü, ~640 kg/palet,
+toplam 17,2 t. Ölçülen sonuç:
+
+| Ölçü | Değer |
+| --- | --- |
+| Hacim doluluğu | %41,3 |
+| KINGPIN | 10.673 / 12.000 kg (%88,9) |
+| TRIDEM | 14.076 / 27.000 kg (%52,1) |
+| CoG x | 7,92 m (zarf 3–10,8 m) |
+| Yerleşim x aralığı | 2,4 → 12,8 m |
+
+Yük öne yaslansaydı kingpin payı 14,6 t'ye çıkardı — sınırın 2,6 t üstünde.
+Çözücü bloğu arkaya kaydırdığı için plan geçerli. Aks kısıtının yerleşimi
+gerçekten değiştirdiği tek senaryo budur; `axleLimit.test.ts` hem sonucu hem
+"öne yaslanmış yerleşim ihlal ederdi" iddiasını sınar.
+
+Sevkiyat satırları palet birim yükünü doğrudan taşır (`PALLET-EUR-LOADED`).
+Bu bir **modelleme kısayoludur**: Faz 7 kolileri palete istifliyor ama üretilen
+paleti bir üst elleçleme birimi olarak kaydetmiyor, bu yüzden araç yerleşimi
+kolileri tek tek görüyor. Faz 7 → 8 devri yazılana kadar palet birim yükü
+sevkiyat satırında tanımlanır; tedarikçi paletli gönderdiğinde gerçek akış
+zaten budur.
+
 #### Faz 8.3 teslim kaydı
 
 - `/operations/loading` sevkiyat, araç şablonu ve plan sürümünü aynı çalışma

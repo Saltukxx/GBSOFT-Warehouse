@@ -54,7 +54,16 @@ const createSchema = z.object({
         stopCode: z.string().min(1),
         skuCode: z.string().min(1),
         packageTypeCode: z.string().min(1),
+        /** Kaç elleçleme birimi üretileceği. */
         quantity: z.number().int().min(1).max(5_000),
+        /**
+         * Bir elleçleme biriminin içindeki SKU adedi.
+         *
+         * Koli için 1'dir ve verilmezse öyle kabul edilir. Palet birim
+         * yükünde paletin üzerindeki koli sayısıdır; brüt ağırlık dara + bu
+         * adet × SKU ağırlığı olduğu için palet ağırlığı buradan gelir.
+         */
+        unitsPerHandlingUnit: z.number().int().min(1).max(5_000).optional(),
       }),
     )
     .min(1)
@@ -264,6 +273,7 @@ export async function shipmentRoutes(app: FastifyInstance) {
           skuId: skuByCode.get(line.skuCode)!,
           packageTypeId: typeByCode.get(line.packageTypeCode)!,
           quantity: line.quantity,
+          unitsPerHandlingUnit: line.unitsPerHandlingUnit ?? 1,
         })),
       });
 
@@ -325,6 +335,7 @@ export async function shipmentRoutes(app: FastifyInstance) {
           packageTypeCode: line.packageType.code,
           packageTypeName: line.packageType.name,
           quantity: line.quantity,
+          unitsPerHandlingUnit: line.unitsPerHandlingUnit,
         })),
       };
     },
